@@ -1,13 +1,11 @@
 import {
-  Entity,
-  Column,
   PrimaryGeneratedColumn,
+  Column,
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
 
-@Entity('tracks')
-export class Track {
+export abstract class BaseMediaEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -18,12 +16,6 @@ export class Track {
   title: string;
 
   @Column()
-  artist: string;
-
-  @Column()
-  album: string;
-
-  @Column()
   state: string;
 
   @Column({ nullable: true })
@@ -32,27 +24,21 @@ export class Track {
   @Column({ nullable: true })
   player: string;
 
-  @Column({ type: 'timestamp' })
+  @Column({ nullable: true, type: 'timestamptz' })
   startTime: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
-  pausedAt: Date;
-
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ nullable: true, type: 'timestamptz' })
   endTime: Date;
 
-  @Column({ type: 'int', nullable: true })
-  listenedMs: number;
-
   @Column({ nullable: true })
-  thumbnailPath: string;
+  thumbnailUrl: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  raw: any;
 
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
-
-  @Column({ type: 'jsonb', nullable: true })
-  rawData: any;
 }

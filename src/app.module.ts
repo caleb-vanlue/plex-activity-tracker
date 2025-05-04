@@ -3,17 +3,17 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PlexController } from './plex/plex.controller';
-import { HistoryService } from './history/history.service';
-import { Track } from './history/entities/track.entity';
-import { Movie } from './history/entities/movie.entity';
-import { Episode } from './history/entities/episode.entity';
+import { Track } from './media/entities/track.entity';
+import { Movie } from './media/entities/movie.entity';
+import { Episode } from './media/entities/episode.entity';
 import { ThumbnailService } from './thumbnail/thumbnail.service';
-import { HistoryController } from './history/history.controller';
-import { VideoController } from './video/video.controller';
+import { MediaController } from './media/media.controller';
 import { getDataSourceOptions } from 'typeorm.config';
-import { EpisodeRepository } from './history/repositories/episode.repository';
-import { MovieRepository } from './history/repositories/movie.repository';
-import { TrackRepository } from './history/repositories/track.repository';
+import { TrackRepository } from './media/repositories/track.repository';
+import { MovieRepository } from './media/repositories/movie.repository';
+import { EpisodeRepository } from './media/repositories/episode.repository';
+import { MediaService } from './media/media.service';
+import { MediaEventService } from './media/media-event.service';
 
 @Module({
   imports: [
@@ -30,13 +30,14 @@ import { TrackRepository } from './history/repositories/track.repository';
     TypeOrmModule.forFeature([Track, Movie, Episode]),
     EventEmitterModule.forRoot(),
   ],
-  controllers: [PlexController, HistoryController, VideoController],
+  controllers: [PlexController, MediaController],
   providers: [
-    HistoryService,
     ThumbnailService,
     TrackRepository,
     MovieRepository,
     EpisodeRepository,
+    MediaService,
+    MediaEventService,
   ],
 })
 export class AppModule {}

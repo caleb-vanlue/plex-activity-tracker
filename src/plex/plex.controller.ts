@@ -5,27 +5,26 @@ import {
   Logger,
   UploadedFile,
   UseInterceptors,
-  Req,
   Get,
   Param,
   Res,
   Query,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Response } from 'express';
 import { createReadStream } from 'fs';
-import { ThumbnailService } from 'src/thumbnail/thumbnail.service';
-import { HistoryService } from 'src/history/history.service';
+import { ThumbnailService } from '../thumbnail/thumbnail.service';
+import { MediaEventService } from '../media/media-event.service';
+import { MediaService } from '../media/media.service';
 
 @Controller('webhooks')
 export class PlexController {
   private readonly logger = new Logger(PlexController.name);
 
   constructor(
-    private eventEmitter: EventEmitter2,
+    private mediaEventService: MediaEventService,
+    private mediaService: MediaService,
     private thumbnailService: ThumbnailService,
-    private historyService: HistoryService,
   ) {}
 
   @Post('plex')
@@ -46,77 +45,7 @@ export class PlexController {
         thumbnailPath = await this.thumbnailService.saveThumbnail(thumbnail);
       }
 
-      if (payload.Metadata?.type === 'track') {
-        const trackData = {
-          eventType: payload.event,
-          ratingKey: payload.Metadata.ratingKey,
-          title: payload.Metadata.title,
-          artist: payload.Metadata.grandparentTitle,
-          album: payload.Metadata.parentTitle,
-          state: this.mapEventToState(payload.event),
-          user: payload.Account?.title,
-          player: payload.Player?.title,
-          timestamp: new Date().toISOString(),
-          thumbnailUrl: thumbnailPath ? `/thumbnails/${thumbnailPath}` : null,
-          raw: payload,
-        };
-
-        this.eventEmitter.emit('plex.trackEvent', trackData);
-
-        this.logger.log(
-          `Track ${trackData.state}: ${trackData.title} by ${trackData.artist}`,
-        );
-      } else if (payload.Metadata?.type === 'movie') {
-        const movieData = {
-          eventType: payload.event,
-          ratingKey: payload.Metadata.ratingKey,
-          title: payload.Metadata.title,
-          type: 'movie',
-          year: payload.Metadata.year,
-          director: this.extractDirector(payload.Metadata),
-          studio: payload.Metadata.studio,
-          summary: payload.Metadata.summary,
-          duration: payload.Metadata.duration,
-          state: this.mapEventToState(payload.event),
-          user: payload.Account?.title,
-          player: payload.Player?.title,
-          timestamp: new Date().toISOString(),
-          thumbnailUrl: thumbnailPath ? `/thumbnails/${thumbnailPath}` : null,
-          raw: payload,
-        };
-
-        this.eventEmitter.emit('plex.videoEvent', movieData);
-
-        this.logger.log(
-          `Movie ${movieData.state}: ${movieData.title} (${movieData.year})`,
-        );
-      } else if (payload.Metadata?.type === 'episode') {
-        const episodeData = {
-          eventType: payload.event,
-          ratingKey: payload.Metadata.ratingKey,
-          title: payload.Metadata.title,
-          type: 'episode',
-          showTitle: payload.Metadata.grandparentTitle,
-          season: payload.Metadata.parentIndex,
-          episode: payload.Metadata.index,
-          summary: payload.Metadata.summary,
-          duration: payload.Metadata.duration,
-          state: this.mapEventToState(payload.event),
-          user: payload.Account?.title,
-          player: payload.Player?.title,
-          timestamp: new Date().toISOString(),
-          thumbnailUrl: thumbnailPath ? `/thumbnails/${thumbnailPath}` : null,
-          raw: payload,
-        };
-
-        this.eventEmitter.emit('plex.videoEvent', episodeData);
-
-        this.logger.log(
-          `Episode ${episodeData.state}: ${episodeData.title} (${episodeData.showTitle} S${episodeData.season}E${episodeData.episode})`,
-        );
-      } else {
-        this.logger.debug(`Ignoring event for type: ${payload.Metadata?.type}`);
-      }
+      await this.mediaEventService.processPlexWebhook(payload, thumbnailPath);
 
       return { success: true };
     } catch (error) {
@@ -146,19 +75,15 @@ export class PlexController {
 
   @Get('current')
   async getCurrentMedia(@Query('type') type: string = 'all') {
-    if (type === 'track') {
-      return this.historyService.getCurrentTrack();
-    } else if (type === 'movie') {
-      return this.historyService.getCurrentMovie();
-    } else if (type === 'episode') {
-      return this.historyService.getCurrentEpisode();
-    } else {
-      return {
-        track: await this.historyService.getCurrentTrack(),
-        movie: await this.historyService.getCurrentMovie(),
-        episode: await this.historyService.getCurrentEpisode(),
-      };
+    if (type !== 'all') {
+      return this.mediaService.getCurrentMedia(type);
     }
+
+    return {
+      track: this.mediaService.getCurrentMedia('track'),
+      movie: this.mediaService.getCurrentMedia('movie'),
+      episode: this.mediaService.getCurrentMedia('episode'),
+    };
   }
 
   @Get('history')
@@ -167,16 +92,16 @@ export class PlexController {
     @Query('limit') limit: number = 10,
   ) {
     if (type === 'track') {
-      return this.historyService.getRecentTracks(limit);
+      return this.mediaService.getRecentTracks(limit);
     } else if (type === 'movie') {
-      return this.historyService.getRecentMovies(limit);
+      return this.mediaService.getRecentMovies(limit);
     } else if (type === 'episode') {
-      return this.historyService.getRecentEpisodes(limit);
+      return this.mediaService.getRecentEpisodes(limit);
     } else {
       return {
-        tracks: await this.historyService.getRecentTracks(limit),
-        movies: await this.historyService.getRecentMovies(limit),
-        episodes: await this.historyService.getRecentEpisodes(limit),
+        tracks: await this.mediaService.getRecentTracks(limit),
+        movies: await this.mediaService.getRecentMovies(limit),
+        episodes: await this.mediaService.getRecentEpisodes(limit),
       };
     }
   }
@@ -187,47 +112,17 @@ export class PlexController {
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
   ) {
     if (type === 'track') {
-      return this.historyService.getListeningStats(timeframe);
+      return this.mediaService.getListeningStats(timeframe);
     } else if (type === 'movie') {
-      return this.historyService.getMovieWatchingStats(timeframe);
+      return this.mediaService.getMovieWatchingStats(timeframe);
     } else if (type === 'episode') {
-      return this.historyService.getTVWatchingStats(timeframe);
+      return this.mediaService.getTVWatchingStats(timeframe);
     } else {
       return {
-        music: await this.historyService.getListeningStats(timeframe),
-        movies: await this.historyService.getMovieWatchingStats(timeframe),
-        tv: await this.historyService.getTVWatchingStats(timeframe),
+        music: await this.mediaService.getListeningStats(timeframe),
+        movies: await this.mediaService.getMovieWatchingStats(timeframe),
+        tv: await this.mediaService.getTVWatchingStats(timeframe),
       };
     }
-  }
-
-  private mapEventToState(event: string): string {
-    switch (event) {
-      case 'media.play':
-      case 'media.resume':
-        return 'playing';
-      case 'media.pause':
-        return 'paused';
-      case 'media.stop':
-        return 'stopped';
-      default:
-        return 'unknown';
-    }
-  }
-
-  private extractDirector(metadata: any): string | null {
-    if (!metadata.Director || !metadata.Director.length) {
-      return null;
-    }
-
-    if (Array.isArray(metadata.Director)) {
-      return metadata.Director.map((d: any) => d.tag || d.name || d).join(', ');
-    }
-
-    if (typeof metadata.Director === 'object') {
-      return metadata.Director.tag || metadata.Director.name || null;
-    }
-
-    return metadata.Director;
   }
 }

@@ -1,8 +1,8 @@
 import { DataSource, DataSourceOptions } from 'typeorm';
 import * as dotenv from 'dotenv';
-import { Track } from 'src/history/entities/track.entity';
-import { Episode } from 'src/history/entities/episode.entity';
-import { Movie } from 'src/history/entities/movie.entity';
+import { Track } from 'src/media/entities/track.entity';
+import { Episode } from 'src/media/entities/episode.entity';
+import { Movie } from 'src/media/entities/movie.entity';
 
 dotenv.config();
 
