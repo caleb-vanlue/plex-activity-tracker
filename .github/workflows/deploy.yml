@@ -27,4 +27,3 @@ jobs:
             plex-history-app:latest
 
           docker image prune -f
-          Remove-Item .env
