@@ -13,9 +13,9 @@ RUN npm prune --production
 
 EXPOSE 3000
 
-RUN echo '#!/bin/sh\n\
+RUN echo "#!/bin/sh\n\
 npm run migration:run\n\
 npm run start:prod\n\
-' > /usr/src/app/startup.sh && chmod +x /usr/src/app/startup.sh
+" > /usr/src/app/startup.sh && chmod +x /usr/src/app/startup.sh
 
-CMD ["/usr/src/app/startup.sh"]
+CMD ["/bin/sh", "/usr/src/app/startup.sh"]
