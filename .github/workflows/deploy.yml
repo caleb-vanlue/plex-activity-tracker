@@ -20,10 +20,19 @@ jobs:
 
           docker build -t plex-history-app:latest .
 
+          @"
+          DB_HOST=${{ secrets.DB_HOST }}
+          NODE_ENV=production
+          PORT=3000
+          "@ | Out-File -FilePath .env -Encoding utf8
+
           docker run -d `
             --name plex-history-app `
             -p 3000:3000 `
+            --env-file .env `
             --restart unless-stopped `
+            --network host `
             plex-history-app:latest
 
           docker image prune -f
+          Remove-Item .env
