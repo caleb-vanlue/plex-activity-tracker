@@ -12,4 +12,4 @@ ENV NODE_ENV=production
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npm run migration:run && npm run start:prod"]
+CMD ["sh", "-c", "npm run migration:run && node dist/main.js"]
