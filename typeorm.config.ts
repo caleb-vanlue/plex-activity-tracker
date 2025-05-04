@@ -1,6 +1,8 @@
 import { DataSource, DataSourceOptions } from 'typeorm';
 import * as dotenv from 'dotenv';
 import { Track } from 'src/history/entities/track.entity';
+import { Episode } from 'src/history/entities/episode.entity';
+import { Movie } from 'src/history/entities/movie.entity';
 
 dotenv.config();
 
@@ -11,7 +13,7 @@ export const getDataSourceOptions = (): DataSourceOptions => ({
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_DATABASE || 'plex',
-  entities: [Track],
+  entities: [Track, Episode, Movie],
   migrations: ['dist/migrations/*.js'],
 });
 
