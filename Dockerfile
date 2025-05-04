@@ -6,11 +6,10 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-
 RUN npm run build
 
-RUN npm prune --production
+ENV NODE_ENV=production
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start:prod"]
+CMD ["sh", "-c", "npm run migration:run && npm run start:prod"]

@@ -24,7 +24,6 @@ jobs:
         run: |
           @"
           DB_HOST=${env:DB_HOST}
-          JWT_SECRET=${env:JWT_SECRET}
           NODE_ENV=production
           PORT=3000
           "@ | Out-File -FilePath .env -Encoding utf8
