@@ -285,6 +285,7 @@ export class MediaEventService {
     switch (event) {
       case 'media.play':
       case 'media.resume':
+      case 'media.scrobble':
         return 'playing';
       case 'media.pause':
         return 'paused';
