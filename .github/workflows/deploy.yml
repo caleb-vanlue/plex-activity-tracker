@@ -12,27 +12,47 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Build and deploy Docker container
+      - name: Build Docker image
+        shell: powershell
+        run: |
+          docker build -t plex-history-app:latest .
+
+      - name: Create environment file
+        shell: powershell
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+        run: |
+          @"
+          DB_HOST=${env:DB_HOST}
+          JWT_SECRET=${env:JWT_SECRET}
+          NODE_ENV=production
+          PORT=3000
+          "@ | Out-File -FilePath .env -Encoding utf8
+
+      - name: Run database migrations on the host
+        shell: powershell
+        run: |
+          docker run --rm `
+            --env-file .env `
+            plex-history-app:latest `
+            npm run migration:run
+
+      - name: Deploy application container
         shell: powershell
         run: |
           docker stop plex-history-app; if (-not $?) { Write-Host "Container wasn't running, continuing..." }
           docker rm plex-history-app; if (-not $?) { Write-Host "Container didn't exist, continuing..." }
 
-          docker build -t plex-history-app:latest .
-
-          @"
-          DB_HOST=${{ secrets.DB_HOST }}
-          NODE_ENV=production
-          PORT=3000
-          "@ | Out-File -FilePath .env -Encoding utf8
-
           docker run -d `
             --name plex-history-app `
             -p 3000:3000 `
             --env-file .env `
+            --add-host=host.docker.internal:host-gateway `
             --restart unless-stopped `
-            --network host `
-            plex-history-app:latest
+            plex-history-app:latest `
+            npm run start:prod
+
+          docker ps -a
 
           docker image prune -f
           Remove-Item .env
