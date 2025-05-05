@@ -11,20 +11,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Setup Node.js
+      - name: Build test Docker image
         shell: powershell
         run: |
-          node -v
+          docker pull plex-history-app:test || true
+          docker build --cache-from plex-history-app:test -t plex-history-app:test .
 
-      - name: Install dependencies
+      - name: Run unit tests in Docker
         shell: powershell
         run: |
-          npm ci
+          New-Item -Path ./test-results -ItemType Directory -Force
+          docker run --rm -v ${PWD}/test-results:/app/test-results plex-history-app:test sh -c "npm run test && cp -r coverage test-results/"
 
-      - name: Run unit tests
+      - name: Archive test results
+        if: always()
         shell: powershell
         run: |
-          npm run test
+          Compress-Archive -Path ./test-results -DestinationPath ./test-results.zip
+          Write-Host "Test results archived"
 
   deploy:
     needs: test
@@ -37,7 +41,8 @@ jobs:
       - name: Build Docker image
         shell: powershell
         run: |
-          docker build -t plex-history-app:latest .
+          # Reuse layers from test image if possible
+          docker build --cache-from plex-history-app:test -t plex-history-app:latest .
 
       - name: Create environment file
         shell: powershell
