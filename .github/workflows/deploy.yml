@@ -1,11 +1,33 @@
-name: Deploy NestJS Docker Container
+name: Test and Deploy NestJS Docker Container
 
 on:
   push:
     branches: [main]
 
 jobs:
+  test:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        shell: powershell
+        run: |
+          node -v
+
+      - name: Install dependencies
+        shell: powershell
+        run: |
+          npm ci
+
+      - name: Run unit tests
+        shell: powershell
+        run: |
+          npm run test
+
   deploy:
+    needs: test
     runs-on: self-hosted
     environment: production
     steps:
