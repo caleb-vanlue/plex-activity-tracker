@@ -79,11 +79,7 @@ export class PlexController {
       return this.mediaService.getCurrentMedia(type);
     }
 
-    return {
-      track: this.mediaService.getCurrentMedia('track'),
-      movie: this.mediaService.getCurrentMedia('movie'),
-      episode: this.mediaService.getCurrentMedia('episode'),
-    };
+    return this.mediaService.getCurrentMedia('all');
   }
 
   @Get('history')

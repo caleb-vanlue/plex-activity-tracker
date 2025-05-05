@@ -28,7 +28,7 @@ export abstract class BaseMediaEntity {
   startTime: Date;
 
   @Column({ nullable: true, type: 'timestamptz' })
-  endTime: Date;
+  endTime?: Date;
 
   @Column({ nullable: true })
   thumbnailUrl: string;

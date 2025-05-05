@@ -83,26 +83,23 @@ export class MediaEventService {
         startTime: now,
       });
 
-      this.logger.log(`Created new track: ${track.title} by ${track.artist}`);
+      if (track && track.title && track.artist) {
+        this.logger.log(`Created new track: ${track.title} by ${track.artist}`);
+      }
     } else {
       const updates: any = { state };
 
-      if (
-        (this.currentMedia.track?.id === track.id &&
-          this.currentMedia.track?.state === 'playing' &&
-          (state === 'stopped' || state === 'paused')) ||
-        state === 'stopped'
-      ) {
-        if (track.startTime) {
+      if (state === 'paused' || state === 'stopped') {
+        if (track.state === 'playing' && track.startTime) {
           updates.endTime = now;
-          const additionalListenedMs =
-            now.getTime() -
-            (track.endTime?.getTime() || track.startTime.getTime());
-          updates.listenedMs = (track.listenedMs || 0) + additionalListenedMs;
+
+          const sessionTime = now.getTime() - track.startTime.getTime();
+
+          updates.listenedMs = (track.listenedMs || 0) + sessionTime;
         }
       }
 
-      if (state === 'playing' && track.state !== 'playing') {
+      if (state === 'playing') {
         updates.startTime = now;
       }
 
@@ -155,28 +152,20 @@ export class MediaEventService {
     } else {
       const updates: any = { state };
 
-      if (
-        (this.currentMedia.movie?.id === movie.id &&
-          this.currentMedia.movie?.state === 'playing' &&
-          (state === 'stopped' || state === 'paused')) ||
-        state === 'stopped'
-      ) {
-        if (movie.startTime) {
+      if (state === 'paused' || state === 'stopped') {
+        if (movie.state === 'playing' && movie.startTime) {
           updates.endTime = now;
-          const additionalWatchedMs =
-            now.getTime() -
-            (movie.endTime?.getTime() || movie.startTime.getTime());
-          updates.watchedMs = (movie.watchedMs || 0) + additionalWatchedMs;
+          const sessionTime = now.getTime() - movie.startTime.getTime();
+          updates.watchedMs = (movie.watchedMs || 0) + sessionTime;
 
           if (movie.duration) {
             updates.percentComplete =
-              ((movie.watchedMs || 0) + additionalWatchedMs) /
-              (movie.duration * 1000);
+              updates.watchedMs / (movie.duration * 1000);
           }
         }
       }
 
-      if (state === 'playing' && movie.state !== 'playing') {
+      if (state === 'playing') {
         updates.startTime = now;
       }
 
@@ -233,28 +222,21 @@ export class MediaEventService {
     } else {
       const updates: any = { state };
 
-      if (
-        (this.currentMedia.episode?.id === episode.id &&
-          this.currentMedia.episode?.state === 'playing' &&
-          (state === 'stopped' || state === 'paused')) ||
-        state === 'stopped'
-      ) {
-        if (episode.startTime) {
+      if (state === 'paused' || state === 'stopped') {
+        if (episode.state === 'playing' && episode.startTime) {
           updates.endTime = now;
-          const additionalWatchedMs =
-            now.getTime() -
-            (episode.endTime?.getTime() || episode.startTime.getTime());
-          updates.watchedMs = (episode.watchedMs || 0) + additionalWatchedMs;
+
+          const sessionTime = now.getTime() - episode.startTime.getTime();
+          updates.watchedMs = (episode.watchedMs || 0) + sessionTime;
 
           if (episode.duration) {
             updates.percentComplete =
-              ((episode.watchedMs || 0) + additionalWatchedMs) /
-              (episode.duration * 1000);
+              updates.watchedMs / (episode.duration * 1000);
           }
         }
       }
 
-      if (state === 'playing' && episode.state !== 'playing') {
+      if (state === 'playing') {
         updates.startTime = now;
       }
 
@@ -297,7 +279,7 @@ export class MediaEventService {
   }
 
   private extractDirector(metadata: any): string | null {
-    if (!metadata.Director || !metadata.Director.length) {
+    if (!metadata || !metadata.Director) {
       return null;
     }
 
@@ -309,6 +291,6 @@ export class MediaEventService {
       return metadata.Director.tag || metadata.Director.name || null;
     }
 
-    return metadata.Director;
+    return String(metadata.Director);
   }
 }
