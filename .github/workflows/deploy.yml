@@ -20,15 +20,14 @@ jobs:
       - name: Run unit tests in Docker
         shell: powershell
         run: |
-          New-Item -Path ./test-results -ItemType Directory -Force
-          docker run --rm -v "${PWD}/test-results:/app/test-results" plex-history-app:test cmd /c "npm run test && mkdir -p test-results && xcopy /E /I coverage test-results"
+          docker run --rm plex-history-app:test npm run test
 
-      - name: Archive test results
-        if: always()
-        shell: powershell
-        run: |
-          Compress-Archive -Path ./test-results -DestinationPath ./test-results.zip
-          Write-Host "Test results archived"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Tests failed with exit code $LASTEXITCODE"
+            exit 1
+          } else {
+            Write-Host "All tests passed successfully!"
+          }
 
   deploy:
     needs: test
