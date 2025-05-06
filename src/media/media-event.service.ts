@@ -95,12 +95,10 @@ export class MediaEventService {
           payload.event === 'media.scrobble' &&
           track.startTime
         ) {
-          // For scrobble during playback - update listenedMs without stopping the session
           const sessionTime = now.getTime() - track.startTime.getTime();
           updates.listenedMs = (track.listenedMs || 0) + sessionTime;
-          updates.startTime = now; // Reset startTime for next calculation
+          updates.startTime = now;
         } else if (track.state !== 'playing') {
-          // Initial play or resume from paused
           updates.startTime = now;
         }
       } else if (
@@ -108,7 +106,6 @@ export class MediaEventService {
         track.state === 'playing' &&
         track.startTime
       ) {
-        // Update time when pausing or stopping
         updates.endTime = now;
         const sessionTime = now.getTime() - track.startTime.getTime();
         updates.listenedMs = (track.listenedMs || 0) + sessionTime;
