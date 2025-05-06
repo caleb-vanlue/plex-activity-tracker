@@ -89,18 +89,29 @@ export class MediaEventService {
     } else {
       const updates: any = { state };
 
-      if (state === 'paused' || state === 'stopped') {
-        if (track.state === 'playing' && track.startTime) {
-          updates.endTime = now;
-
-          const sessionTime = now.getTime() - track.startTime.getTime();
-
-          updates.listenedMs = (track.listenedMs || 0) + sessionTime;
-        }
-      }
-
       if (state === 'playing') {
-        updates.startTime = now;
+        if (
+          track.state === 'playing' &&
+          payload.event === 'media.scrobble' &&
+          track.startTime
+        ) {
+          // For scrobble during playback - update listenedMs without stopping the session
+          const sessionTime = now.getTime() - track.startTime.getTime();
+          updates.listenedMs = (track.listenedMs || 0) + sessionTime;
+          updates.startTime = now; // Reset startTime for next calculation
+        } else if (track.state !== 'playing') {
+          // Initial play or resume from paused
+          updates.startTime = now;
+        }
+      } else if (
+        (state === 'paused' || state === 'stopped') &&
+        track.state === 'playing' &&
+        track.startTime
+      ) {
+        // Update time when pausing or stopping
+        updates.endTime = now;
+        const sessionTime = now.getTime() - track.startTime.getTime();
+        updates.listenedMs = (track.listenedMs || 0) + sessionTime;
       }
 
       await this.trackRepository.update(track.id, updates);
@@ -152,9 +163,13 @@ export class MediaEventService {
     } else {
       const updates: any = { state };
 
-      if (state === 'paused' || state === 'stopped') {
-        if (movie.state === 'playing' && movie.startTime) {
-          updates.endTime = now;
+      if (state === 'playing') {
+        if (
+          movie.state === 'playing' &&
+          payload.event === 'media.scrobble' &&
+          movie.startTime
+        ) {
+          // For scrobble during playback - update watchedMs without stopping the session
           const sessionTime = now.getTime() - movie.startTime.getTime();
           updates.watchedMs = (movie.watchedMs || 0) + sessionTime;
 
@@ -162,11 +177,25 @@ export class MediaEventService {
             updates.percentComplete =
               updates.watchedMs / (movie.duration * 1000);
           }
-        }
-      }
 
-      if (state === 'playing') {
-        updates.startTime = now;
+          updates.startTime = now; // Reset startTime for next calculation
+        } else if (movie.state !== 'playing') {
+          // Initial play or resume from paused
+          updates.startTime = now;
+        }
+      } else if (
+        (state === 'paused' || state === 'stopped') &&
+        movie.state === 'playing' &&
+        movie.startTime
+      ) {
+        // Update time when pausing or stopping
+        updates.endTime = now;
+        const sessionTime = now.getTime() - movie.startTime.getTime();
+        updates.watchedMs = (movie.watchedMs || 0) + sessionTime;
+
+        if (movie.duration) {
+          updates.percentComplete = updates.watchedMs / (movie.duration * 1000);
+        }
       }
 
       await this.movieRepository.update(movie.id, updates);
@@ -222,10 +251,12 @@ export class MediaEventService {
     } else {
       const updates: any = { state };
 
-      if (state === 'paused' || state === 'stopped') {
-        if (episode.state === 'playing' && episode.startTime) {
-          updates.endTime = now;
-
+      if (state === 'playing') {
+        if (
+          episode.state === 'playing' &&
+          payload.event === 'media.scrobble' &&
+          episode.startTime
+        ) {
           const sessionTime = now.getTime() - episode.startTime.getTime();
           updates.watchedMs = (episode.watchedMs || 0) + sessionTime;
 
@@ -233,11 +264,24 @@ export class MediaEventService {
             updates.percentComplete =
               updates.watchedMs / (episode.duration * 1000);
           }
-        }
-      }
 
-      if (state === 'playing') {
-        updates.startTime = now;
+          updates.startTime = now;
+        } else if (episode.state !== 'playing') {
+          updates.startTime = now;
+        }
+      } else if (
+        (state === 'paused' || state === 'stopped') &&
+        episode.state === 'playing' &&
+        episode.startTime
+      ) {
+        updates.endTime = now;
+        const sessionTime = now.getTime() - episode.startTime.getTime();
+        updates.watchedMs = (episode.watchedMs || 0) + sessionTime;
+
+        if (episode.duration) {
+          updates.percentComplete =
+            updates.watchedMs / (episode.duration * 1000);
+        }
       }
 
       await this.episodeRepository.update(episode.id, updates);
