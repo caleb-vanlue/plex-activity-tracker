@@ -14,14 +14,14 @@ jobs:
       - name: Build test Docker image
         shell: powershell
         run: |
-          docker pull plex-history-app:test || true
-          docker build --cache-from plex-history-app:test -t plex-history-app:test .
+          docker pull plex-history-app:test -ErrorAction SilentlyContinue
+          docker build -t plex-history-app:test .
 
       - name: Run unit tests in Docker
         shell: powershell
         run: |
           New-Item -Path ./test-results -ItemType Directory -Force
-          docker run --rm -v ${PWD}/test-results:/app/test-results plex-history-app:test sh -c "npm run test && cp -r coverage test-results/"
+          docker run --rm -v "${PWD}/test-results:/app/test-results" plex-history-app:test cmd /c "npm run test && mkdir -p test-results && xcopy /E /I coverage test-results"
 
       - name: Archive test results
         if: always()
@@ -41,8 +41,7 @@ jobs:
       - name: Build Docker image
         shell: powershell
         run: |
-          # Reuse layers from test image if possible
-          docker build --cache-from plex-history-app:test -t plex-history-app:latest .
+          docker build -t plex-history-app:latest .
 
       - name: Create environment file
         shell: powershell
@@ -66,8 +65,14 @@ jobs:
       - name: Deploy application container
         shell: powershell
         run: |
-          docker stop plex-history-app; if (-not $?) { Write-Host "Container wasn't running, continuing..." }
-          docker rm plex-history-app; if (-not $?) { Write-Host "Container didn't exist, continuing..." }
+          $containerExists = docker ps -a --filter "name=plex-history-app" --format "{{.Names}}"
+          if ($containerExists) {
+            Write-Host "Stopping existing container"
+            docker stop plex-history-app
+            docker rm plex-history-app
+          } else {
+            Write-Host "Container doesn't exist, continuing..."
+          }
 
           docker run -d `
             --name plex-history-app `
