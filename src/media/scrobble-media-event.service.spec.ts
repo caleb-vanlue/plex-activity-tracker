@@ -217,7 +217,7 @@ describe('MediaEventService', () => {
         ...existingTrack,
         state: 'paused',
         endTime: mockDate,
-        listenedMs: 65000, // 5000 + 60000 (the session time)
+        listenedMs: 65000,
       };
 
       trackRepository.findByRatingKey.mockResolvedValue(existingTrack as Track);
@@ -256,8 +256,8 @@ describe('MediaEventService', () => {
       const updatedTrack = {
         ...existingTrack,
         state: 'playing',
-        listenedMs: 65000, // 5000 + 60000 (the session time)
-        startTime: mockDate, // Updated for the next calculation
+        listenedMs: 65000,
+        startTime: mockDate,
       };
 
       trackRepository.findByRatingKey.mockResolvedValue(existingTrack as Track);
@@ -294,7 +294,7 @@ describe('MediaEventService', () => {
         Director: [{ tag: 'Test Director' }],
         studio: 'Test Studio',
         summary: 'Test Summary',
-        duration: 7200, // 2 hours in seconds
+        duration: 7200,
       },
       Account: { title: 'Test User' },
       Player: { title: 'Test Player' },
@@ -349,16 +349,16 @@ describe('MediaEventService', () => {
         duration: 7200,
         state: 'playing',
         startTime: oneMinuteAgo,
-        watchedMs: 120000, // 2 minutes already watched
-        percentComplete: 0.0278, // 120000 / (7200 * 1000)
+        watchedMs: 120000,
+        percentComplete: 0.0278,
       };
 
       const updatedMovie = {
         ...existingMovie,
         state: 'playing',
-        watchedMs: 180000, // 120000 + 60000 (the additional minute)
-        percentComplete: 0.0417, // 180000 / (7200 * 1000)
-        startTime: mockDate, // Updated for the next calculation
+        watchedMs: 180000,
+        percentComplete: 0.0417,
+        startTime: mockDate,
       };
 
       movieRepository.findByRatingKey.mockResolvedValue(existingMovie as Movie);
@@ -376,7 +376,53 @@ describe('MediaEventService', () => {
         expect.objectContaining({
           state: 'playing',
           watchedMs: 180000,
-          percentComplete: 0.025, // 180000 / (7200 * 1000)
+          percentComplete: 0.025,
+          startTime: mockDate,
+        }),
+      );
+      expect(result).toEqual(updatedMovie);
+    });
+
+    it('should update watchedMs and percentComplete on scrobble', async () => {
+      const existingMovie = {
+        id: '1',
+        ratingKey: '456',
+        title: 'Test Movie',
+        year: 2025,
+        director: 'Test Director',
+        studio: 'Test Studio',
+        summary: 'Test Summary',
+        duration: 7200,
+        state: 'playing',
+        startTime: oneMinuteAgo,
+        watchedMs: 120000,
+        percentComplete: 0.0278,
+      };
+
+      const updatedMovie = {
+        ...existingMovie,
+        state: 'playing',
+        watchedMs: 180000,
+        percentComplete: 0.0417,
+        startTime: mockDate,
+      };
+
+      movieRepository.findByRatingKey.mockResolvedValue(existingMovie as Movie);
+      movieRepository.findById.mockResolvedValue(updatedMovie as Movie);
+
+      const scrobblePayload = { ...moviePayload, event: 'media.scrobble' };
+      const result = await (service as any).processMovieEvent(
+        scrobblePayload,
+        'playing',
+        null,
+      );
+
+      expect(movieRepository.update).toHaveBeenCalledWith(
+        '1',
+        expect.objectContaining({
+          state: 'playing',
+          watchedMs: 180000,
+          percentComplete: 180000 / (7200 * 1000),
           startTime: mockDate,
         }),
       );
@@ -393,10 +439,10 @@ describe('MediaEventService', () => {
         ratingKey: '789',
         title: 'Test Episode',
         grandparentTitle: 'Test Show',
-        parentIndex: 1, // Season
-        index: 1, // Episode
+        parentIndex: 1,
+        index: 1,
         summary: 'Test Summary',
-        duration: 1800, // 30 minutes in seconds
+        duration: 1800,
       },
       Account: { title: 'Test User' },
       Player: { title: 'Test Player' },
@@ -452,16 +498,16 @@ describe('MediaEventService', () => {
         duration: 1800,
         state: 'playing',
         startTime: oneMinuteAgo,
-        watchedMs: 120000, // 2 minutes already watched
-        percentComplete: 0.1111, // 120000 / (1800 * 1000)
+        watchedMs: 120000,
+        percentComplete: 0.1111,
       };
 
       const updatedEpisode = {
         ...existingEpisode,
         state: 'playing',
-        watchedMs: 180000, // 120000 + 60000 (the additional minute)
-        percentComplete: 0.1667, // 180000 / (1800 * 1000)
-        startTime: mockDate, // Updated for the next calculation
+        watchedMs: 180000,
+        percentComplete: 0.1667,
+        startTime: mockDate,
       };
 
       episodeRepository.findByRatingKey.mockResolvedValue(
@@ -481,7 +527,7 @@ describe('MediaEventService', () => {
         expect.objectContaining({
           state: 'playing',
           watchedMs: 180000,
-          percentComplete: 0.1, // 180000 / (1800 * 1000)
+          percentComplete: 0.1,
           startTime: mockDate,
         }),
       );
@@ -508,7 +554,7 @@ describe('MediaEventService', () => {
 
       expect(processTrackEventSpy).toHaveBeenCalledWith(
         scrobblePayload,
-        'playing', // This should be the mapped state for 'media.scrobble'
+        'playing',
         null,
       );
     });

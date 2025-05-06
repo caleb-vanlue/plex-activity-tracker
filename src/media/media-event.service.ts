@@ -169,7 +169,6 @@ export class MediaEventService {
           payload.event === 'media.scrobble' &&
           movie.startTime
         ) {
-          // For scrobble during playback - update watchedMs without stopping the session
           const sessionTime = now.getTime() - movie.startTime.getTime();
           updates.watchedMs = (movie.watchedMs || 0) + sessionTime;
 
@@ -178,9 +177,8 @@ export class MediaEventService {
               updates.watchedMs / (movie.duration * 1000);
           }
 
-          updates.startTime = now; // Reset startTime for next calculation
+          updates.startTime = now;
         } else if (movie.state !== 'playing') {
-          // Initial play or resume from paused
           updates.startTime = now;
         }
       } else if (
@@ -188,7 +186,6 @@ export class MediaEventService {
         movie.state === 'playing' &&
         movie.startTime
       ) {
-        // Update time when pausing or stopping
         updates.endTime = now;
         const sessionTime = now.getTime() - movie.startTime.getTime();
         updates.watchedMs = (movie.watchedMs || 0) + sessionTime;
