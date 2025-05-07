@@ -31,7 +31,7 @@ export abstract class BaseMediaEntity {
   endTime?: Date;
 
   @Column({ nullable: true })
-  thumbnailUrl: string;
+  thumbnailFileId: string;
 
   @Column({ type: 'jsonb', nullable: true })
   raw: any;
