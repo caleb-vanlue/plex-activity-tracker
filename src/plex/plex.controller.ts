@@ -40,12 +40,12 @@ export class PlexController {
         `Received webhook: ${payload.event} for ${payload.Metadata?.title}`,
       );
 
-      let thumbnailPath: string | null = null;
+      let thumbnailId: string | null = null;
       if (thumbnail) {
-        thumbnailPath = await this.thumbnailService.saveThumbnail(thumbnail);
+        thumbnailId = await this.thumbnailService.saveThumbnail(thumbnail);
       }
 
-      await this.mediaEventService.processPlexWebhook(payload, thumbnailPath);
+      await this.mediaEventService.processPlexWebhook(payload, thumbnailId);
 
       return { success: true };
     } catch (error) {
@@ -60,7 +60,7 @@ export class PlexController {
     @Res() res: Response,
   ) {
     try {
-      const filePath = await this.thumbnailService.getThumbnailPath(filename);
+      const filePath = await this.thumbnailService.getThumbnailUrl(filename);
       if (!filePath) {
         return res.status(404).send({ error: 'Thumbnail not found' });
       }

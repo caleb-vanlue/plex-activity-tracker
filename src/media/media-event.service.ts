@@ -29,7 +29,7 @@ export class MediaEventService {
 
   async processPlexWebhook(
     payload: any,
-    thumbnailPath: string | null,
+    thumbnailId: string | null,
   ): Promise<any> {
     if (!payload.Metadata?.type) {
       this.logger.warn('Received webhook without metadata type');
@@ -46,11 +46,11 @@ export class MediaEventService {
 
     switch (mediaType) {
       case 'track':
-        return this.processTrackEvent(payload, state, thumbnailPath);
+        return this.processTrackEvent(payload, state, thumbnailId);
       case 'movie':
-        return this.processMovieEvent(payload, state, thumbnailPath);
+        return this.processMovieEvent(payload, state, thumbnailId);
       case 'episode':
-        return this.processEpisodeEvent(payload, state, thumbnailPath);
+        return this.processEpisodeEvent(payload, state, thumbnailId);
       default:
         this.logger.debug(`Ignoring event for unsupported type: ${mediaType}`);
         return null;
@@ -60,7 +60,7 @@ export class MediaEventService {
   private async processTrackEvent(
     payload: any,
     state: string,
-    thumbnailPath: string | null,
+    thumbnailId: string | null,
   ): Promise<any> {
     const now = new Date();
     const trackData = {
@@ -71,7 +71,7 @@ export class MediaEventService {
       state,
       user: payload.Account?.title,
       player: payload.Player?.title,
-      thumbnailUrl: thumbnailPath ? `/thumbnails/${thumbnailPath}` : null,
+      thumbnailFileId: thumbnailId,
       raw: payload,
     };
 
@@ -130,7 +130,7 @@ export class MediaEventService {
   private async processMovieEvent(
     payload: any,
     state: string,
-    thumbnailPath: string | null,
+    thumbnailId: string | null,
   ): Promise<any> {
     const now = new Date();
     const movieData = {
@@ -144,7 +144,7 @@ export class MediaEventService {
       state,
       user: payload.Account?.title,
       player: payload.Player?.title,
-      thumbnailUrl: thumbnailPath ? `/thumbnails/${thumbnailPath}` : null,
+      thumbnailFileId: thumbnailId,
       raw: payload,
     };
 
@@ -211,7 +211,7 @@ export class MediaEventService {
   private async processEpisodeEvent(
     payload: any,
     state: string,
-    thumbnailPath: string | null,
+    thumbnailId: string | null,
   ): Promise<any> {
     const now = new Date();
     const episodeData = {
@@ -225,7 +225,7 @@ export class MediaEventService {
       state,
       user: payload.Account?.title,
       player: payload.Player?.title,
-      thumbnailUrl: thumbnailPath ? `/thumbnails/${thumbnailPath}` : null,
+      thumbnailFileId: thumbnailId,
       raw: payload,
     };
 

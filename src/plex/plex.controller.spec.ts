@@ -24,7 +24,7 @@ jest.mock('../media/media.service', () => ({
 jest.mock('../thumbnail/thumbnail.service', () => ({
   ThumbnailService: jest.fn().mockImplementation(() => ({
     saveThumbnail: jest.fn(),
-    getThumbnailPath: jest.fn(),
+    getThumbnailUrl: jest.fn(),
   })),
 }));
 
@@ -179,13 +179,13 @@ describe('PlexController', () => {
         send: jest.fn(),
       } as unknown as Response;
 
-      (thumbnailService.getThumbnailPath as jest.Mock).mockResolvedValue(
+      (thumbnailService.getThumbnailUrl as jest.Mock).mockResolvedValue(
         mockPath,
       );
 
       await controller.getThumbnail('thumbnail.jpg', mockResponse);
 
-      expect(thumbnailService.getThumbnailPath).toHaveBeenCalledWith(
+      expect(thumbnailService.getThumbnailUrl).toHaveBeenCalledWith(
         'thumbnail.jpg',
       );
       expect(createReadStream).toHaveBeenCalledWith(mockPath);
@@ -197,11 +197,11 @@ describe('PlexController', () => {
         send: jest.fn(),
       } as unknown as Response;
 
-      (thumbnailService.getThumbnailPath as jest.Mock).mockResolvedValue(null);
+      (thumbnailService.getThumbnailUrl as jest.Mock).mockResolvedValue(null);
 
       await controller.getThumbnail('nonexistent.jpg', mockResponse);
 
-      expect(thumbnailService.getThumbnailPath).toHaveBeenCalledWith(
+      expect(thumbnailService.getThumbnailUrl).toHaveBeenCalledWith(
         'nonexistent.jpg',
       );
       expect(mockResponse.status).toHaveBeenCalledWith(404);
@@ -216,7 +216,7 @@ describe('PlexController', () => {
         send: jest.fn(),
       } as unknown as Response;
 
-      (thumbnailService.getThumbnailPath as jest.Mock).mockRejectedValue(
+      (thumbnailService.getThumbnailUrl as jest.Mock).mockRejectedValue(
         new Error('Test error'),
       );
 

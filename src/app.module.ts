@@ -14,6 +14,8 @@ import { MovieRepository } from './media/repositories/movie.repository';
 import { EpisodeRepository } from './media/repositories/episode.repository';
 import { MediaService } from './media/media.service';
 import { MediaEventService } from './media/media-event.service';
+import { ThumbnailModule } from './thumbnail/thumbnail.module';
+import { HttpModule } from '@nestjs/axios';
 
 @Module({
   imports: [
@@ -29,6 +31,8 @@ import { MediaEventService } from './media/media-event.service';
     }),
     TypeOrmModule.forFeature([Track, Movie, Episode]),
     EventEmitterModule.forRoot(),
+    ThumbnailModule,
+    HttpModule,
   ],
   controllers: [PlexController, MediaController],
   providers: [

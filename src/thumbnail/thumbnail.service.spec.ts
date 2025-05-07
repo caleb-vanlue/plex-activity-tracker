@@ -1,43 +1,56 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
 import { ThumbnailService } from './thumbnail.service';
-import { promises as fs } from 'fs';
-import { join } from 'path';
-import { v4 as uuidv4 } from 'uuid';
-
-jest.mock('fs', () => ({
-  promises: {
-    mkdir: jest.fn().mockResolvedValue(undefined),
-    copyFile: jest.fn().mockResolvedValue(undefined),
-    unlink: jest.fn().mockResolvedValue(undefined),
-    writeFile: jest.fn().mockResolvedValue(undefined),
-  },
-}));
-
-jest.mock('path', () => ({
-  join: jest.fn((a, b) => `${a}/${b}`),
-}));
-
-jest.mock('uuid', () => ({
-  v4: jest.fn().mockReturnValue('mocked-uuid'),
-}));
+import { of, throwError } from 'rxjs';
 
 describe('ThumbnailService', () => {
   let service: ThumbnailService;
-  const defaultStoragePath = './uploads/thumbnails';
+  let httpService: HttpService;
+  let configService: ConfigService;
+  const mockApiUrl = 'http://test-api.com/files';
+
+  const mockFileResponse = {
+    id: 'mocked-file-id',
+    filename: 'mocked-uuid.jpg',
+    originalName: 'image.jpg',
+    mimeType: 'image/jpeg',
+    size: 12345,
+    url: '/files/mocked-file-id',
+  };
 
   beforeEach(async () => {
-    jest.clearAllMocks();
+    const httpServiceMock = {
+      post: jest.fn(),
+      get: jest.fn(),
+    };
 
-    const originalEnv = process.env;
-
-    process.env = { ...originalEnv };
-    delete process.env.THUMBNAIL_STORAGE_PATH;
+    const configServiceMock = {
+      get: jest.fn((key, defaultValue) => {
+        if (key === 'FILE_STORAGE_API_URL') {
+          return mockApiUrl;
+        }
+        return defaultValue;
+      }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ThumbnailService],
+      providers: [
+        ThumbnailService,
+        {
+          provide: HttpService,
+          useValue: httpServiceMock,
+        },
+        {
+          provide: ConfigService,
+          useValue: configServiceMock,
+        },
+      ],
     }).compile();
 
     service = module.get<ThumbnailService>(ThumbnailService);
+    httpService = module.get<HttpService>(HttpService);
+    configService = module.get<ConfigService>(ConfigService);
   });
 
   afterEach(() => {
@@ -45,142 +58,80 @@ describe('ThumbnailService', () => {
   });
 
   describe('saveThumbnail', () => {
-    it('should save thumbnail from file path', async () => {
-      const mockFile = {
-        path: '/tmp/upload-123456',
-        originalname: 'image.jpg',
-      };
-
-      (join as jest.Mock).mockImplementation((a, b) => `${a}/${b}`);
-      (uuidv4 as jest.Mock).mockReturnValue('mocked-uuid');
-
-      const result = await service.saveThumbnail(mockFile as any);
-
-      expect(fs.mkdir).toHaveBeenCalledWith(defaultStoragePath, {
-        recursive: true,
-      });
-      expect(join).toHaveBeenCalledWith(defaultStoragePath, 'mocked-uuid.jpg');
-      expect(fs.copyFile).toHaveBeenCalledWith(
-        mockFile.path,
-        `${defaultStoragePath}/mocked-uuid.jpg`,
-      );
-      expect(fs.unlink).toHaveBeenCalledWith(mockFile.path);
-      expect(result).toBe('mocked-uuid.jpg');
-    });
-
-    it('should save thumbnail from file buffer', async () => {
-      const mockFile = {
-        buffer: Buffer.from('test-image'),
-        originalname: 'image.png',
-      };
-
-      const result = await service.saveThumbnail(mockFile as any);
-
-      expect(fs.mkdir).toHaveBeenCalledWith(defaultStoragePath, {
-        recursive: true,
-      });
-      expect(join).toHaveBeenCalledWith(defaultStoragePath, 'mocked-uuid.png');
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        `${defaultStoragePath}/mocked-uuid.png`,
-        mockFile.buffer,
-      );
-      expect(result).toBe('mocked-uuid.png');
-    });
-
-    it('should use custom storage path when environment variable is set', async () => {
-      process.env.THUMBNAIL_STORAGE_PATH = '/custom/path';
-
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [ThumbnailService],
-      }).compile();
-
-      service = module.get<ThumbnailService>(ThumbnailService);
-
+    it('should upload thumbnail from file buffer and return file ID', async () => {
       const mockFile = {
         buffer: Buffer.from('test-image'),
         originalname: 'image.jpg',
+        mimetype: 'image/jpeg',
       };
+
+      (httpService.post as jest.Mock).mockReturnValue(
+        of({
+          data: mockFileResponse,
+        }),
+      );
 
       const result = await service.saveThumbnail(mockFile as any);
 
-      expect(fs.mkdir).toHaveBeenCalledWith('/custom/path', {
-        recursive: true,
-      });
-      expect(join).toHaveBeenCalledWith('/custom/path', 'mocked-uuid.jpg');
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        '/custom/path/mocked-uuid.jpg',
-        mockFile.buffer,
+      expect(httpService.post).toHaveBeenCalled();
+      expect(httpService.post).toHaveBeenCalledWith(
+        `${mockApiUrl}/files/upload`,
+        expect.anything(),
+        expect.anything(),
       );
-      expect(result).toBe('mocked-uuid.jpg');
+      expect(result).toBe(mockFileResponse.id);
     });
 
-    it('should handle errors during save', async () => {
+    it('should upload thumbnail with reference metadata when provided', async () => {
       const mockFile = {
         buffer: Buffer.from('test-image'),
         originalname: 'image.jpg',
+        mimetype: 'image/jpeg',
       };
 
-      (fs.mkdir as jest.Mock).mockRejectedValueOnce(new Error('mkdir error'));
+      (httpService.post as jest.Mock).mockReturnValue(
+        of({
+          data: mockFileResponse,
+        }),
+      );
+
+      const result = await service.saveThumbnail(
+        mockFile as any,
+        'test-type',
+        'test-id',
+      );
+
+      expect(httpService.post).toHaveBeenCalled();
+      expect(result).toBe(mockFileResponse.id);
+    });
+
+    it('should handle HTTP errors gracefully', async () => {
+      const mockFile = {
+        buffer: Buffer.from('test-image'),
+        originalname: 'image.jpg',
+        mimetype: 'image/jpeg',
+      };
+
+      (httpService.post as jest.Mock).mockReturnValue(
+        throwError(() => new Error('HTTP error')),
+      );
 
       const result = await service.saveThumbnail(mockFile as any);
 
-      expect(fs.mkdir).toHaveBeenCalledWith(defaultStoragePath, {
-        recursive: true,
-      });
       expect(result).toBeNull();
-    });
-
-    it('should handle cleanup errors gracefully', async () => {
-      const mockFile = {
-        path: '/tmp/upload-123456',
-        originalname: 'image.jpg',
-      };
-
-      (fs.unlink as jest.Mock).mockRejectedValueOnce(new Error('unlink error'));
-
-      const result = await service.saveThumbnail(mockFile as any);
-
-      expect(fs.copyFile).toHaveBeenCalledWith(
-        mockFile.path,
-        `${defaultStoragePath}/mocked-uuid.jpg`,
-      );
-      expect(fs.unlink).toHaveBeenCalledWith(mockFile.path);
-      expect(result).toBe('mocked-uuid.jpg');
     });
   });
 
-  describe('getThumbnailPath', () => {
-    it('should return full path for valid filename', async () => {
-      const filename = 'test-thumbnail.jpg';
-
-      const result = await service.getThumbnailPath(filename);
-
-      expect(join).toHaveBeenCalledWith(defaultStoragePath, filename);
-      expect(result).toBe(`${defaultStoragePath}/${filename}`);
+  describe('getThumbnailUrl', () => {
+    it('should return the correct URL for a file ID', () => {
+      const fileId = 'test-file-id';
+      const result = service.getThumbnailUrl(fileId);
+      expect(result).toBe(`${mockApiUrl}/id/${fileId}`);
     });
 
-    it('should return null for empty filename', async () => {
-      const result = await service.getThumbnailPath('');
-
-      expect(join).not.toHaveBeenCalled();
+    it('should return null for empty file ID', () => {
+      const result = service.getThumbnailUrl('');
       expect(result).toBeNull();
-    });
-
-    it('should use custom storage path when environment variable is set', async () => {
-      process.env.THUMBNAIL_STORAGE_PATH = '/custom/path';
-
-      const module: TestingModule = await Test.createTestingModule({
-        providers: [ThumbnailService],
-      }).compile();
-
-      service = module.get<ThumbnailService>(ThumbnailService);
-
-      const filename = 'test-thumbnail.jpg';
-
-      const result = await service.getThumbnailPath(filename);
-
-      expect(join).toHaveBeenCalledWith('/custom/path', filename);
-      expect(result).toBe('/custom/path/test-thumbnail.jpg');
     });
   });
 });
