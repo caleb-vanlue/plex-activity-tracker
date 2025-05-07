@@ -46,11 +46,13 @@ jobs:
         shell: powershell
         env:
           DB_HOST: ${{ secrets.DB_HOST }}
+          FILE_STORAGE_API_URL: ${{ secrets.FILE_STORAGE_API_URL }}
         run: |
           @"
           DB_HOST=${env:DB_HOST}
           NODE_ENV=production
           PORT=3000
+          FILE_STORAGE_API_URL=${env:FILE_STORAGE_API_URL}
           "@ | Out-File -FilePath .env -Encoding utf8
 
       - name: Run database migrations on the host
