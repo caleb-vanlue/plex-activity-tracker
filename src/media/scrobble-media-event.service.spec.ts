@@ -589,4 +589,87 @@ describe('MediaEventService', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('stopOtherPlayingMedia', () => {
+    const oneMinuteAgo = new Date(mockDate.getTime() - 60000);
+
+    beforeEach(() => {
+      (service as any).currentMedia = {
+        track: {
+          id: '1',
+          title: 'Current Track',
+          artist: 'Test Artist',
+          state: 'playing',
+          startTime: oneMinuteAgo,
+          listenedMs: 10000,
+        } as Track,
+        movie: {
+          id: '2',
+          title: 'Current Movie',
+          state: 'playing',
+          startTime: oneMinuteAgo,
+          watchedMs: 20000,
+          duration: 7200,
+        } as Movie,
+        episode: {
+          id: '3',
+          title: 'Current Episode',
+          state: 'paused',
+          startTime: oneMinuteAgo,
+          watchedMs: 30000,
+        } as Episode,
+      };
+    });
+
+    it('should stop all media except the specified type', async () => {
+      await (service as any).stopOtherPlayingMedia('episode');
+
+      expect(trackRepository.update).toHaveBeenCalledWith(
+        '1',
+        expect.objectContaining({
+          state: 'stopped',
+          endTime: mockDate,
+          listenedMs: 70000,
+        }),
+      );
+
+      expect(movieRepository.update).toHaveBeenCalledWith(
+        '2',
+        expect.objectContaining({
+          state: 'stopped',
+          endTime: mockDate,
+          watchedMs: 80000,
+          percentComplete: 80000 / (7200 * 1000),
+        }),
+      );
+      expect(episodeRepository.update).not.toHaveBeenCalled();
+      expect((service as any).currentMedia.track).toBeNull();
+      expect((service as any).currentMedia.movie).toBeNull();
+      expect((service as any).currentMedia.episode).toEqual({
+        id: '3',
+        title: 'Current Episode',
+        state: 'paused',
+        startTime: oneMinuteAgo,
+        watchedMs: 30000,
+      });
+    });
+
+    it('should not update media that is not playing', async () => {
+      (service as any).currentMedia.track.state = 'paused';
+
+      await (service as any).stopOtherPlayingMedia('episode');
+
+      expect(trackRepository.update).not.toHaveBeenCalled();
+      expect(movieRepository.update).toHaveBeenCalled();
+    });
+
+    it('should handle null current media items', async () => {
+      (service as any).currentMedia.track = null;
+
+      await (service as any).stopOtherPlayingMedia('episode');
+
+      expect(trackRepository.update).not.toHaveBeenCalled();
+      expect(movieRepository.update).toHaveBeenCalled();
+    });
+  });
 });

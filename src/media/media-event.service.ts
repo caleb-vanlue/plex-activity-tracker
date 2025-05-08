@@ -57,6 +57,102 @@ export class MediaEventService {
     }
   }
 
+  private async stopOtherPlayingMedia(
+    exceptType: 'track' | 'movie' | 'episode',
+  ): Promise<void> {
+    const now = new Date();
+    const mediaTypes: Array<'track' | 'movie' | 'episode'> = [
+      'track',
+      'movie',
+      'episode',
+    ];
+
+    for (const type of mediaTypes) {
+      if (type === exceptType) continue;
+
+      switch (type) {
+        case 'track': {
+          const track = this.currentMedia.track;
+          if (!track || track.state !== 'playing') continue;
+
+          this.logger.debug(
+            `Stopping track ${track.title} because a new ${exceptType} started playing`,
+          );
+
+          const updates: any = {
+            state: 'stopped',
+            endTime: now,
+          };
+
+          if (track.startTime) {
+            const sessionTime = now.getTime() - track.startTime.getTime();
+            updates.listenedMs = (track.listenedMs || 0) + sessionTime;
+          }
+
+          await this.trackRepository.update(track.id, updates);
+          this.currentMedia.track = null;
+          break;
+        }
+
+        case 'movie': {
+          const movie = this.currentMedia.movie;
+          if (!movie || movie.state !== 'playing') continue;
+
+          this.logger.debug(
+            `Stopping movie ${movie.title} because a new ${exceptType} started playing`,
+          );
+
+          const updates: any = {
+            state: 'stopped',
+            endTime: now,
+          };
+
+          if (movie.startTime) {
+            const sessionTime = now.getTime() - movie.startTime.getTime();
+            updates.watchedMs = (movie.watchedMs || 0) + sessionTime;
+
+            if (movie.duration) {
+              updates.percentComplete =
+                updates.watchedMs / (movie.duration * 1000);
+            }
+          }
+
+          await this.movieRepository.update(movie.id, updates);
+          this.currentMedia.movie = null;
+          break;
+        }
+
+        case 'episode': {
+          const episode = this.currentMedia.episode;
+          if (!episode || episode.state !== 'playing') continue;
+
+          this.logger.debug(
+            `Stopping episode ${episode.title} because a new ${exceptType} started playing`,
+          );
+
+          const updates: any = {
+            state: 'stopped',
+            endTime: now,
+          };
+
+          if (episode.startTime) {
+            const sessionTime = now.getTime() - episode.startTime.getTime();
+            updates.watchedMs = (episode.watchedMs || 0) + sessionTime;
+
+            if (episode.duration) {
+              updates.percentComplete =
+                updates.watchedMs / (episode.duration * 1000);
+            }
+          }
+
+          await this.episodeRepository.update(episode.id, updates);
+          this.currentMedia.episode = null;
+          break;
+        }
+      }
+    }
+  }
+
   private async processTrackEvent(
     payload: any,
     state: string,
@@ -116,6 +212,31 @@ export class MediaEventService {
     }
 
     if (state === 'playing') {
+      await this.stopOtherPlayingMedia('track');
+
+      const currentTrack = this.currentMedia.track;
+      if (
+        currentTrack &&
+        currentTrack.id !== track?.id &&
+        currentTrack.state === 'playing'
+      ) {
+        this.logger.debug(
+          `Stopping track ${currentTrack.title} because a new track started playing`,
+        );
+
+        const updates: any = {
+          state: 'stopped',
+          endTime: now,
+        };
+
+        if (currentTrack.startTime) {
+          const sessionTime = now.getTime() - currentTrack.startTime.getTime();
+          updates.listenedMs = (currentTrack.listenedMs || 0) + sessionTime;
+        }
+
+        await this.trackRepository.update(currentTrack.id, updates);
+      }
+
       this.currentMedia.track = track;
     } else if (this.currentMedia.track?.id === track?.id) {
       this.currentMedia.track = state === 'paused' ? track : null;
@@ -197,6 +318,36 @@ export class MediaEventService {
     }
 
     if (state === 'playing') {
+      await this.stopOtherPlayingMedia('movie');
+
+      const currentMovie = this.currentMedia.movie;
+      if (
+        currentMovie &&
+        currentMovie.id !== movie?.id &&
+        currentMovie.state === 'playing'
+      ) {
+        this.logger.debug(
+          `Stopping movie ${currentMovie.title} because a new movie started playing`,
+        );
+
+        const updates: any = {
+          state: 'stopped',
+          endTime: now,
+        };
+
+        if (currentMovie.startTime) {
+          const sessionTime = now.getTime() - currentMovie.startTime.getTime();
+          updates.watchedMs = (currentMovie.watchedMs || 0) + sessionTime;
+
+          if (currentMovie.duration) {
+            updates.percentComplete =
+              updates.watchedMs / (currentMovie.duration * 1000);
+          }
+        }
+
+        await this.movieRepository.update(currentMovie.id, updates);
+      }
+
       this.currentMedia.movie = movie;
     } else if (this.currentMedia.movie?.id === movie?.id) {
       this.currentMedia.movie = state === 'paused' ? movie : null;
@@ -283,6 +434,37 @@ export class MediaEventService {
     }
 
     if (state === 'playing') {
+      await this.stopOtherPlayingMedia('episode');
+
+      const currentEpisode = this.currentMedia.episode;
+      if (
+        currentEpisode &&
+        currentEpisode.id !== episode?.id &&
+        currentEpisode.state === 'playing'
+      ) {
+        this.logger.debug(
+          `Stopping episode ${currentEpisode.title} because a new episode started playing`,
+        );
+
+        const updates: any = {
+          state: 'stopped',
+          endTime: now,
+        };
+
+        if (currentEpisode.startTime) {
+          const sessionTime =
+            now.getTime() - currentEpisode.startTime.getTime();
+          updates.watchedMs = (currentEpisode.watchedMs || 0) + sessionTime;
+
+          if (currentEpisode.duration) {
+            updates.percentComplete =
+              updates.watchedMs / (currentEpisode.duration * 1000);
+          }
+        }
+
+        await this.episodeRepository.update(currentEpisode.id, updates);
+      }
+
       this.currentMedia.episode = episode;
     } else if (this.currentMedia.episode?.id === episode?.id) {
       this.currentMedia.episode = state === 'paused' ? episode : null;
