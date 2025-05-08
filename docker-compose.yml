@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  plex-history-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: plex-history-app
+    ports:
+      - '3000:3000'
+    networks:
+      - app-network
+    environment:
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=${PORT:-3000}
+      - FILE_STORAGE_API_URL=${FILE_STORAGE_API_URL:-http://file-storage:3001/files}
+      - FILE_STORAGE_TIMEOUT_MS=${FILE_STORAGE_TIMEOUT_MS:-15000}
+      - FILE_STORAGE_MAX_RETRIES=${FILE_STORAGE_MAX_RETRIES:-3}
+    restart: unless-stopped
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    command: npm run start:prod
+
+networks:
+  app-network:
+    name: app-network
+    external: true

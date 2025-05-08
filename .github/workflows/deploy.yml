@@ -40,51 +40,44 @@ jobs:
       - name: Build Docker image
         shell: powershell
         run: |
-          docker build -t plex-history-app:latest .
+          docker-compose build plex-history-app
 
-      - name: Create environment file
+      - name: Run database migrations
         shell: powershell
         env:
-          DB_HOST: ${{ secrets.DB_HOST }}
-          FILE_STORAGE_API_URL: ${{ secrets.FILE_STORAGE_API_URL }}
+          DB_HOST: host.docker.internal
+          NODE_ENV: production
         run: |
-          @"
-          DB_HOST=${env:DB_HOST}
-          NODE_ENV=production
-          PORT=3000
-          FILE_STORAGE_API_URL=${env:FILE_STORAGE_API_URL}
-          "@ | Out-File -FilePath .env -Encoding utf8
-
-      - name: Run database migrations on the host
-        shell: powershell
-        run: |
-          docker run --rm `
-            --env-file .env `
-            plex-history-app:latest `
+          docker-compose run --rm `
+            -e DB_HOST=$env:DB_HOST `
+            -e NODE_ENV=$env:NODE_ENV `
+            plex-history-app `
             npm run migration:run
 
-      - name: Deploy application container
+      - name: Deploy services
         shell: powershell
+        env:
+          DB_HOST: host.docker.internal
+          FILE_STORAGE_API_URL: http://file-storage:3001/files
+          FILE_STORAGE_TIMEOUT_MS: 15000
+          FILE_STORAGE_MAX_RETRIES: 3
+          NODE_ENV: production
+          PORT: 3000
         run: |
           $containerExists = docker ps -a --filter "name=plex-history-app" --format "{{.Names}}"
           if ($containerExists) {
             Write-Host "Stopping existing container"
-            docker stop plex-history-app
-            docker rm plex-history-app
+            docker-compose stop plex-history-app
+            docker-compose rm -f plex-history-app
           } else {
             Write-Host "Container doesn't exist, continuing..."
           }
 
-          docker run -d `
-            --name plex-history-app `
-            -p 3000:3000 `
-            --env-file .env `
-            --add-host=host.docker.internal:host-gateway `
-            --restart unless-stopped `
-            plex-history-app:latest `
-            npm run start:prod
+          docker-compose up -d plex-history-app
 
-          docker ps -a
+          docker-compose ps
 
+      - name: Cleanup
+        shell: powershell
+        run: |
           docker image prune -f
-          Remove-Item .env
