@@ -16,20 +16,106 @@ export class ThumbnailService {
   ) {
     this.fileStorageApiUrl = this.configService.get<string>(
       'FILE_STORAGE_API_URL',
-      'http://localhost:3000/files',
+      'http://localhost:3001',
     );
   }
 
-  async saveThumbnail(
-    file: Express.Multer.File,
-    referenceType?: string,
-    referenceId?: string,
-  ): Promise<string | null> {
-    if (!file) {
+  async findExistingThumbnail(metadata: {
+    type: string;
+    ratingKey?: string;
+    parentRatingKey?: string;
+    grandparentRatingKey?: string;
+  }): Promise<string | null> {
+    if (!metadata.type) {
       return null;
     }
 
     try {
+      let params: any = {
+        mediaType: metadata.type,
+      };
+
+      if (metadata.ratingKey) {
+        params.ratingKey = metadata.ratingKey;
+      }
+      if (metadata.parentRatingKey) {
+        params.parentRatingKey = metadata.parentRatingKey;
+      }
+      if (metadata.grandparentRatingKey) {
+        params.grandparentRatingKey = metadata.grandparentRatingKey;
+      }
+
+      const response = await lastValueFrom(
+        this.httpService
+          .get(`${this.fileStorageApiUrl}/files/plex/thumbnail`, { params })
+          .pipe(
+            map((res) => res.data),
+            catchError((error) => {
+              if (error.response?.status === 404) {
+                return throwError(() => ({ notFound: true }));
+              }
+              this.logger.error(
+                `Error checking existing thumbnail: ${error.message}`,
+                error.stack,
+              );
+              return throwError(() => error);
+            }),
+          ),
+      );
+
+      this.logger.debug(
+        `Found existing thumbnail: ${response.id} for ${metadata.type}`,
+      );
+
+      return response.id;
+    } catch (error) {
+      if (error.notFound) {
+        this.logger.debug(`No existing thumbnail found for ${metadata.type}`);
+        return null;
+      }
+
+      this.logger.error(`Error finding existing thumbnail: ${error.message}`);
+      return null;
+    }
+  }
+
+  async saveThumbnail(
+    file: Express.Multer.File,
+    metadata: {
+      type: string;
+      title?: string;
+      ratingKey?: string;
+      parentRatingKey?: string;
+      parentTitle?: string;
+      grandparentRatingKey?: string;
+      grandparentTitle?: string;
+    },
+  ): Promise<string | null> {
+    if (!file || !metadata.type) {
+      return null;
+    }
+
+    try {
+      console.log({
+        type: metadata.type,
+        ratingKey: metadata.ratingKey,
+        parentRatingKey: metadata.parentRatingKey,
+        grandparentRatingKey: metadata.grandparentRatingKey,
+      });
+      const existingThumbnailId = await this.findExistingThumbnail({
+        type: metadata.type,
+        ratingKey: metadata.ratingKey,
+        parentRatingKey: metadata.parentRatingKey,
+        grandparentRatingKey: metadata.grandparentRatingKey,
+      });
+
+      if (existingThumbnailId) {
+        this.logger.debug(
+          `Using existing thumbnail (${existingThumbnailId}) for ${metadata.type}`,
+        );
+        return existingThumbnailId;
+      }
+
       const formData = new FormData();
 
       if (file.buffer) {
@@ -47,13 +133,39 @@ export class ThumbnailService {
         throw new Error('File has neither buffer nor path');
       }
 
-      if (referenceType) {
-        formData.append('referenceType', referenceType);
+      const referenceType = `plex-${metadata.type}`;
+      let referenceId = metadata.ratingKey;
+
+      if (metadata.type === 'track' && metadata.parentRatingKey) {
+        referenceId = metadata.parentRatingKey;
+      } else if (metadata.type === 'episode' && metadata.grandparentRatingKey) {
+        referenceId = metadata.grandparentRatingKey;
       }
+
+      formData.append('referenceType', referenceType);
       if (referenceId) {
         formData.append('referenceId', referenceId);
       }
       formData.append('isPublic', 'true');
+
+      formData.append('plexMediaType', metadata.type);
+      if (metadata.ratingKey) {
+        formData.append('plexRatingKey', metadata.ratingKey);
+      }
+      if (metadata.parentRatingKey) {
+        formData.append('plexParentRatingKey', metadata.parentRatingKey);
+      }
+      if (metadata.grandparentRatingKey) {
+        formData.append(
+          'plexGrandparentRatingKey',
+          metadata.grandparentRatingKey,
+        );
+      }
+      if (metadata.title || metadata.parentTitle || metadata.grandparentTitle) {
+        const title =
+          metadata.title || metadata.parentTitle || metadata.grandparentTitle;
+        formData.append('plexTitle', title);
+      }
 
       const response = await lastValueFrom(
         this.httpService

@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { PlexController } from './plex/plex.controller';
 import { Track } from './media/entities/track.entity';
 import { Movie } from './media/entities/movie.entity';
 import { Episode } from './media/entities/episode.entity';
@@ -16,6 +15,7 @@ import { MediaService } from './media/media.service';
 import { MediaEventService } from './media/media-event.service';
 import { ThumbnailModule } from './thumbnail/thumbnail.module';
 import { HttpModule } from '@nestjs/axios';
+import { PlexController } from './plex/plex.controller';
 
 @Module({
   imports: [

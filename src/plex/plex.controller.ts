@@ -12,7 +12,6 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
-import { createReadStream } from 'fs';
 import { ThumbnailService } from '../thumbnail/thumbnail.service';
 import { MediaEventService } from '../media/media-event.service';
 import { MediaService } from '../media/media.service';
@@ -41,8 +40,26 @@ export class PlexController {
       );
 
       let thumbnailId: string | null = null;
-      if (thumbnail) {
-        thumbnailId = await this.thumbnailService.saveThumbnail(thumbnail);
+
+      if (thumbnail && payload.Metadata) {
+        const metadata = {
+          type: payload.Metadata.type,
+          title: payload.Metadata.title,
+          ratingKey: payload.Metadata.ratingKey,
+          parentRatingKey: payload.Metadata.parentRatingKey,
+          parentTitle: payload.Metadata.parentTitle,
+          grandparentRatingKey: payload.Metadata.grandparentRatingKey,
+          grandparentTitle: payload.Metadata.grandparentTitle,
+        };
+
+        thumbnailId = await this.thumbnailService.saveThumbnail(
+          thumbnail,
+          metadata,
+        );
+
+        if (thumbnailId) {
+          this.logger.debug(`Using thumbnail ID: ${thumbnailId}`);
+        }
       }
 
       await this.mediaEventService.processPlexWebhook(payload, thumbnailId);
@@ -54,19 +71,16 @@ export class PlexController {
     }
   }
 
-  @Get('thumbnails/:filename')
-  async getThumbnail(
-    @Param('filename') filename: string,
-    @Res() res: Response,
-  ) {
+  @Get('thumbnails/:id')
+  async getThumbnail(@Param('id') id: string, @Res() res: Response) {
     try {
-      const filePath = await this.thumbnailService.getThumbnailUrl(filename);
-      if (!filePath) {
+      const thumbnailUrl = this.thumbnailService.getThumbnailUrl(id);
+
+      if (!thumbnailUrl) {
         return res.status(404).send({ error: 'Thumbnail not found' });
       }
 
-      const stream = createReadStream(filePath);
-      stream.pipe(res);
+      return res.redirect(thumbnailUrl);
     } catch (error) {
       this.logger.error(`Error serving thumbnail: ${error.message}`);
       return res.status(500).send({ error: 'Failed to serve thumbnail' });
