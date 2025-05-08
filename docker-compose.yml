@@ -14,7 +14,7 @@ services:
       - DB_HOST=${DB_HOST:-host.docker.internal}
       - NODE_ENV=${NODE_ENV:-production}
       - PORT=${PORT:-3000}
-      - FILE_STORAGE_API_URL=${FILE_STORAGE_API_URL:-http://file-storage:3001/files}
+      - FILE_STORAGE_API_URL=${FILE_STORAGE_API_URL:-http://file-storage:3001}
       - FILE_STORAGE_TIMEOUT_MS=${FILE_STORAGE_TIMEOUT_MS:-15000}
       - FILE_STORAGE_MAX_RETRIES=${FILE_STORAGE_MAX_RETRIES:-3}
     restart: unless-stopped
