@@ -105,7 +105,7 @@ PORT=3000
 
 ```bash
 git clone https://github.com/caleb-vanlue/plex-activity-tracker.git
-cd plexamp-activity-tracker
+cd plex-activity-tracker
 ```
 
 2. Install dependencies
