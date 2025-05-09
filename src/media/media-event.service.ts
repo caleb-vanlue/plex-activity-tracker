@@ -406,6 +406,7 @@ export class MediaEventService implements OnModuleInit {
       case 'media.play':
       case 'media.resume':
       case 'media.scrobble':
+      case 'playback.started':
         return 'playing';
       case 'media.pause':
         return 'paused';
