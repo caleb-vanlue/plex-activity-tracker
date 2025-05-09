@@ -20,7 +20,7 @@ export class MediaController {
     name: 'type',
     required: false,
     type: String,
-    description: 'Type of media to fetch (e.g., all, music, movies, tv)',
+    description: 'Type of media to fetch (e.g., all, track, movie, episode)',
   })
   @Get('current')
   async getCurrentMedia(@Query('type') type: string = 'all') {
