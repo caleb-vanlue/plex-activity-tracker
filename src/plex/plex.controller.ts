@@ -43,7 +43,7 @@ export class PlexController {
       const payload = body.payload ? JSON.parse(body.payload) : body;
 
       this.logger.debug(
-        `Received webhook: ${payload.event} for ${payload.Metadata?.title}`,
+        `Received webhook: ${payload.event} for ${payload.Metadata?.title} from user ${payload.Account?.title}`,
       );
 
       let thumbnailId: string | null = null;
@@ -106,13 +106,23 @@ export class PlexController {
     type: String,
     description: 'Type of media to fetch (track, movie, episode, all)',
   })
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by specific user',
+  })
   @Get('current')
-  async getCurrentMedia(@Query('type') type: string = 'all') {
-    if (type !== 'all') {
-      return this.mediaService.getCurrentMedia(type);
-    }
+  async getCurrentMedia(
+    @Query('type') type: string = 'all',
+    @Query('user') user?: string,
+  ) {
+    return this.mediaService.getCurrentMedia(type, user);
+  }
 
-    return this.mediaService.getCurrentMedia('all');
+  @Get('users/active')
+  async getActiveUsers() {
+    return { users: await this.mediaService.getActiveUsers() };
   }
 
   @ApiQuery({
@@ -127,23 +137,39 @@ export class PlexController {
     type: Number,
     description: 'Number of items to return',
   })
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by specific user',
+  })
   @Get('history')
   async getHistory(
     @Query('type') type: string = 'all',
     @Query('limit') limit: number = 10,
+    @Query('user') user?: string,
   ) {
     if (type === 'track') {
-      return this.mediaService.getRecentTracks(limit);
+      return this.mediaService.getRecentTracks(limit, user);
     } else if (type === 'movie') {
-      return this.mediaService.getRecentMovies(limit);
+      return this.mediaService.getRecentMovies(limit, user);
     } else if (type === 'episode') {
-      return this.mediaService.getRecentEpisodes(limit);
+      return this.mediaService.getRecentEpisodes(limit, user);
     } else {
-      return {
-        tracks: await this.mediaService.getRecentTracks(limit),
-        movies: await this.mediaService.getRecentMovies(limit),
-        episodes: await this.mediaService.getRecentEpisodes(limit),
-      };
+      if (user) {
+        return {
+          user,
+          tracks: await this.mediaService.getRecentTracks(limit, user),
+          movies: await this.mediaService.getRecentMovies(limit, user),
+          episodes: await this.mediaService.getRecentEpisodes(limit, user),
+        };
+      } else {
+        return {
+          tracks: await this.mediaService.getRecentTracks(limit),
+          movies: await this.mediaService.getRecentMovies(limit),
+          episodes: await this.mediaService.getRecentEpisodes(limit),
+        };
+      }
     }
   }
 
@@ -159,23 +185,26 @@ export class PlexController {
     type: String,
     description: 'Timeframe for stats (day, week, month, all)',
   })
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by specific user',
+  })
   @Get('stats')
   async getMediaStats(
     @Query('type') type: string = 'all',
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    @Query('user') user?: string,
   ) {
     if (type === 'track') {
-      return this.mediaService.getListeningStats(timeframe);
+      return this.mediaService.getListeningStats(timeframe, user);
     } else if (type === 'movie') {
-      return this.mediaService.getMovieWatchingStats(timeframe);
+      return this.mediaService.getMovieWatchingStats(timeframe, user);
     } else if (type === 'episode') {
-      return this.mediaService.getTVWatchingStats(timeframe);
+      return this.mediaService.getTVWatchingStats(timeframe, user);
     } else {
-      return {
-        music: await this.mediaService.getListeningStats(timeframe),
-        movies: await this.mediaService.getMovieWatchingStats(timeframe),
-        tv: await this.mediaService.getTVWatchingStats(timeframe),
-      };
+      return this.mediaService.getStats(timeframe, user);
     }
   }
 }

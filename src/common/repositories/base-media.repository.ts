@@ -44,6 +44,26 @@ export abstract class BaseMediaRepository<T extends BaseMediaEntity> {
     });
   }
 
+  async findByUser(user: string, limit: number = 10): Promise<T[]> {
+    return this.repository.find({
+      where: { user } as any,
+      order: { startTime: 'DESC' } as any,
+      take: limit,
+    });
+  }
+
+  async findByStateAndUser(
+    state: string,
+    user: string,
+    limit: number = 10,
+  ): Promise<T[]> {
+    return this.repository.find({
+      where: { state, user } as any,
+      order: { startTime: 'DESC' } as any,
+      take: limit,
+    });
+  }
+
   async query(queryString: string, parameters?: any[]): Promise<any> {
     return this.repository.query(queryString, parameters);
   }
@@ -62,5 +82,9 @@ export abstract class BaseMediaRepository<T extends BaseMediaEntity> {
       default:
         return '';
     }
+  }
+
+  protected getUserCondition(user?: string): string {
+    return user ? `AND "user" = '${user}'` : '';
   }
 }

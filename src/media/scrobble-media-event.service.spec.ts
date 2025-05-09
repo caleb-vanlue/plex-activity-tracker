@@ -21,6 +21,7 @@ describe('MediaEventService - Same Type Media Stopping', () => {
     jest.spyOn(global, 'Date').mockImplementation(() => mockDate as any);
 
     const mockTrackRepo = {
+      findByState: jest.fn().mockResolvedValue([]),
       findByRatingKey: jest.fn(),
       findById: jest.fn(),
       create: jest.fn(),
@@ -28,6 +29,7 @@ describe('MediaEventService - Same Type Media Stopping', () => {
     };
 
     const mockMovieRepo = {
+      findByState: jest.fn().mockResolvedValue([]),
       findByRatingKey: jest.fn(),
       findById: jest.fn(),
       create: jest.fn(),
@@ -35,6 +37,7 @@ describe('MediaEventService - Same Type Media Stopping', () => {
     };
 
     const mockEpisodeRepo = {
+      findByState: jest.fn().mockResolvedValue([]),
       findByRatingKey: jest.fn(),
       findById: jest.fn(),
       create: jest.fn(),
@@ -77,6 +80,8 @@ describe('MediaEventService - Same Type Media Stopping', () => {
     episodeRepository = module.get(
       EpisodeRepository,
     ) as jest.Mocked<EpisodeRepository>;
+
+    await service.onModuleInit();
   });
 
   afterEach(() => {
@@ -98,31 +103,87 @@ describe('MediaEventService - Same Type Media Stopping', () => {
     };
 
     it('should stop the previous track but not affect movie or episode', async () => {
-      (service as any).currentMedia = {
-        track: {
-          id: '1',
-          title: 'Current Track',
-          artist: 'Test Artist',
-          state: 'playing',
-          startTime: oneMinuteAgo,
-          listenedMs: 10000,
-        } as Track,
-        movie: {
-          id: '2',
-          title: 'Current Movie',
-          state: 'playing',
-          startTime: oneMinuteAgo,
-          watchedMs: 20000,
-          duration: 7200,
-        } as Movie,
-        episode: {
-          id: '3',
-          title: 'Current Episode',
-          state: 'playing',
-          startTime: oneMinuteAgo,
-          watchedMs: 30000,
-        } as Episode,
-      };
+      const currentTrack = {
+        id: '1',
+        title: 'Current Track',
+        artist: 'Test Artist',
+        state: 'playing',
+        startTime: oneMinuteAgo,
+        listenedMs: 10000,
+        user: 'Test User',
+      } as Track;
+
+      const currentMovie = {
+        id: '2',
+        title: 'Current Movie',
+        state: 'playing',
+        startTime: oneMinuteAgo,
+        watchedMs: 20000,
+        duration: 7200,
+        user: 'Other User',
+      } as Movie;
+
+      const currentEpisode = {
+        id: '3',
+        title: 'Current Episode',
+        state: 'playing',
+        startTime: oneMinuteAgo,
+        watchedMs: 30000,
+        user: 'Third User',
+      } as Episode;
+
+      trackRepository.findByRatingKey.mockResolvedValueOnce(null);
+      trackRepository.create.mockResolvedValueOnce(currentTrack);
+      trackRepository.findById.mockResolvedValueOnce(currentTrack);
+
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'track',
+            ratingKey: '123',
+            title: 'Current Track',
+            grandparentTitle: 'Test Artist',
+            parentTitle: 'Test Album',
+          },
+          Account: { title: 'Test User' },
+        },
+        null,
+      );
+
+      movieRepository.findByRatingKey.mockResolvedValueOnce(null);
+      movieRepository.create.mockResolvedValueOnce(currentMovie);
+      movieRepository.findById.mockResolvedValueOnce(currentMovie);
+
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'movie',
+            ratingKey: '789',
+            title: 'Current Movie',
+          },
+          Account: { title: 'Other User' },
+        },
+        null,
+      );
+
+      episodeRepository.findByRatingKey.mockResolvedValueOnce(null);
+      episodeRepository.create.mockResolvedValueOnce(currentEpisode);
+      episodeRepository.findById.mockResolvedValueOnce(currentEpisode);
+
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'episode',
+            ratingKey: '101112',
+            title: 'Current Episode',
+          },
+          Account: { title: 'Third User' },
+        },
+        null,
+      );
 
       const newTrack = {
         id: '4',
@@ -132,45 +193,46 @@ describe('MediaEventService - Same Type Media Stopping', () => {
         album: 'Test Album',
         state: 'playing',
         startTime: mockDate,
+        user: 'Test User',
       } as Track;
 
-      trackRepository.findByRatingKey.mockResolvedValue(null);
-      trackRepository.create.mockResolvedValue(newTrack);
+      trackRepository.findByRatingKey.mockReset();
+      trackRepository.findById.mockReset();
+      trackRepository.create.mockReset();
+      trackRepository.update.mockReset();
 
-      await (service as any).processTrackEvent(
-        newTrackPayload,
-        'playing',
-        null,
-      );
+      trackRepository.findByRatingKey.mockResolvedValueOnce(null);
+      trackRepository.create.mockResolvedValueOnce(newTrack);
+      trackRepository.findById.mockResolvedValueOnce(newTrack);
+
+      trackRepository.findById.mockResolvedValueOnce({
+        ...currentTrack,
+        state: 'stopped',
+        endTime: mockDate,
+        listenedMs: 70000, // 10000 + 60000 (1 minute)
+      });
+
+      await service.processPlexWebhook(newTrackPayload, null);
 
       expect(trackRepository.update).toHaveBeenCalledWith(
         '1',
         expect.objectContaining({
           state: 'stopped',
           endTime: mockDate,
-          listenedMs: 70000, // 10000 + 60000 (1 minute)
         }),
       );
 
       expect(movieRepository.update).not.toHaveBeenCalled();
       expect(episodeRepository.update).not.toHaveBeenCalled();
-      expect((service as any).currentMedia.track).toBe(newTrack);
-      expect((service as any).currentMedia.movie).toEqual({
-        id: '2',
-        title: 'Current Movie',
-        state: 'playing',
-        startTime: oneMinuteAgo,
-        watchedMs: 20000,
-        duration: 7200,
-      });
 
-      expect((service as any).currentMedia.episode).toEqual({
-        id: '3',
-        title: 'Current Episode',
-        state: 'playing',
-        startTime: oneMinuteAgo,
-        watchedMs: 30000,
-      });
+      const testUserMedia = service.getCurrentMedia('all', 'Test User');
+      expect(testUserMedia.tracks[0].id).toBe('4');
+
+      const otherUserMedia = service.getCurrentMedia('all', 'Other User');
+      expect(otherUserMedia.movies[0].id).toBe('2');
+
+      const thirdUserMedia = service.getCurrentMedia('all', 'Third User');
+      expect(thirdUserMedia.episodes[0].id).toBe('3');
     });
   });
 
@@ -187,36 +249,92 @@ describe('MediaEventService - Same Type Media Stopping', () => {
         summary: 'Test Summary',
         duration: 7200,
       },
-      Account: { title: 'Test User' },
+      Account: { title: 'Movie User' },
       Player: { title: 'Test Player' },
     };
 
     it('should stop the previous movie but not affect track or episode', async () => {
-      (service as any).currentMedia = {
-        track: {
-          id: '1',
-          title: 'Current Track',
-          artist: 'Test Artist',
-          state: 'playing',
-          startTime: oneMinuteAgo,
-          listenedMs: 10000,
-        } as Track,
-        movie: {
-          id: '2',
-          title: 'Current Movie',
-          state: 'playing',
-          startTime: oneMinuteAgo,
-          watchedMs: 20000,
-          duration: 7200,
-        } as Movie,
-        episode: {
-          id: '3',
-          title: 'Current Episode',
-          state: 'playing',
-          startTime: oneMinuteAgo,
-          watchedMs: 30000,
-        } as Episode,
-      };
+      const currentMovie = {
+        id: '2',
+        title: 'Current Movie',
+        state: 'playing',
+        startTime: oneMinuteAgo,
+        watchedMs: 20000,
+        duration: 7200,
+        user: 'Movie User',
+      } as Movie;
+
+      const currentTrack = {
+        id: '1',
+        title: 'Current Track',
+        artist: 'Test Artist',
+        state: 'playing',
+        startTime: oneMinuteAgo,
+        listenedMs: 10000,
+        user: 'Track User',
+      } as Track;
+
+      const currentEpisode = {
+        id: '3',
+        title: 'Current Episode',
+        state: 'playing',
+        startTime: oneMinuteAgo,
+        watchedMs: 30000,
+        user: 'Episode User',
+      } as Episode;
+
+      movieRepository.findByRatingKey.mockResolvedValueOnce(null);
+      movieRepository.create.mockResolvedValueOnce(currentMovie);
+      movieRepository.findById.mockResolvedValueOnce(currentMovie);
+
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'movie',
+            ratingKey: '123',
+            title: 'Current Movie',
+          },
+          Account: { title: 'Movie User' },
+        },
+        null,
+      );
+
+      trackRepository.findByRatingKey.mockResolvedValueOnce(null);
+      trackRepository.create.mockResolvedValueOnce(currentTrack);
+      trackRepository.findById.mockResolvedValueOnce(currentTrack);
+
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'track',
+            ratingKey: '789',
+            title: 'Current Track',
+            grandparentTitle: 'Test Artist',
+            parentTitle: 'Test Album',
+          },
+          Account: { title: 'Track User' },
+        },
+        null,
+      );
+
+      episodeRepository.findByRatingKey.mockResolvedValueOnce(null);
+      episodeRepository.create.mockResolvedValueOnce(currentEpisode);
+      episodeRepository.findById.mockResolvedValueOnce(currentEpisode);
+
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'episode',
+            ratingKey: '101112',
+            title: 'Current Episode',
+          },
+          Account: { title: 'Episode User' },
+        },
+        null,
+      );
 
       const newMovie = {
         id: '4',
@@ -227,45 +345,46 @@ describe('MediaEventService - Same Type Media Stopping', () => {
         state: 'playing',
         startTime: mockDate,
         duration: 7200,
+        user: 'Movie User',
       } as Movie;
 
-      movieRepository.findByRatingKey.mockResolvedValue(null);
-      movieRepository.create.mockResolvedValue(newMovie);
+      movieRepository.findByRatingKey.mockReset();
+      movieRepository.findById.mockReset();
+      movieRepository.create.mockReset();
+      movieRepository.update.mockReset();
 
-      await (service as any).processMovieEvent(
-        newMoviePayload,
-        'playing',
-        null,
-      );
+      movieRepository.findByRatingKey.mockResolvedValueOnce(null);
+      movieRepository.create.mockResolvedValueOnce(newMovie);
+      movieRepository.findById.mockResolvedValueOnce(newMovie);
+
+      movieRepository.findById.mockResolvedValueOnce({
+        ...currentMovie,
+        state: 'stopped',
+        endTime: mockDate,
+        watchedMs: 80000, // 20000 + 60000 (1 minute)
+      });
+
+      await service.processPlexWebhook(newMoviePayload, null);
 
       expect(movieRepository.update).toHaveBeenCalledWith(
         '2',
         expect.objectContaining({
           state: 'stopped',
           endTime: mockDate,
-          watchedMs: 80000, // 20000 + 60000 (1 minute)
         }),
       );
 
       expect(trackRepository.update).not.toHaveBeenCalled();
       expect(episodeRepository.update).not.toHaveBeenCalled();
-      expect((service as any).currentMedia.movie).toBe(newMovie);
-      expect((service as any).currentMedia.track).toEqual({
-        id: '1',
-        title: 'Current Track',
-        artist: 'Test Artist',
-        state: 'playing',
-        startTime: oneMinuteAgo,
-        listenedMs: 10000,
-      });
 
-      expect((service as any).currentMedia.episode).toEqual({
-        id: '3',
-        title: 'Current Episode',
-        state: 'playing',
-        startTime: oneMinuteAgo,
-        watchedMs: 30000,
-      });
+      const movieUserMedia = service.getCurrentMedia('all', 'Movie User');
+      expect(movieUserMedia.movies[0].id).toBe('4');
+
+      const trackUserMedia = service.getCurrentMedia('all', 'Track User');
+      expect(trackUserMedia.tracks[0].id).toBe('1');
+
+      const episodeUserMedia = service.getCurrentMedia('all', 'Episode User');
+      expect(episodeUserMedia.episodes[0].id).toBe('3');
     });
   });
 });

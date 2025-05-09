@@ -13,15 +13,12 @@ export class MediaService {
     private mediaEventService: MediaEventService,
   ) {}
 
-  async getCurrentMedia(type: string): Promise<any> {
-    if (type === 'all') {
-      return {
-        track: this.mediaEventService.getCurrentMedia('track'),
-        movie: this.mediaEventService.getCurrentMedia('movie'),
-        episode: this.mediaEventService.getCurrentMedia('episode'),
-      };
-    }
-    return this.mediaEventService.getCurrentMedia(type);
+  async getCurrentMedia(type: string, user?: string): Promise<any> {
+    return this.mediaEventService.getCurrentMedia(type, user);
+  }
+
+  async getActiveUsers(): Promise<string[]> {
+    return this.mediaEventService.getActiveUsers();
   }
 
   async getMediaById(type: string, id: string): Promise<any> {
@@ -37,111 +34,200 @@ export class MediaService {
     }
   }
 
-  async getRecentTracks(limit: number = 10): Promise<any[]> {
-    return this.trackRepository.findRecent(limit);
+  async getRecentTracks(limit: number = 10, user?: string): Promise<any[]> {
+    return user
+      ? this.trackRepository.findByUser(user, limit)
+      : this.trackRepository.findRecent(limit);
   }
 
-  async getTracksByArtist(artist: string, limit: number = 10): Promise<any[]> {
-    return this.trackRepository.findByArtist(artist, limit);
+  async getTracksByArtist(
+    artist: string,
+    limit: number = 10,
+    user?: string,
+  ): Promise<any[]> {
+    return user
+      ? this.trackRepository.findByArtistAndUser(artist, user, limit)
+      : this.trackRepository.findByArtist(artist, limit);
   }
 
-  async getTracksByAlbum(album: string, limit: number = 10): Promise<any[]> {
-    return this.trackRepository.findByAlbum(album, limit);
+  async getTracksByAlbum(
+    album: string,
+    limit: number = 10,
+    user?: string,
+  ): Promise<any[]> {
+    return user
+      ? this.trackRepository.findByAlbumAndUser(album, user, limit)
+      : this.trackRepository.findByAlbum(album, limit);
   }
 
-  async getTracksByState(state: string, limit: number = 10): Promise<any[]> {
-    return this.trackRepository.findByState(state, limit);
+  async getTracksByState(
+    state: string,
+    limit: number = 10,
+    user?: string,
+  ): Promise<any[]> {
+    return user
+      ? this.trackRepository.findByStateAndUser(state, user, limit)
+      : this.trackRepository.findByState(state, limit);
   }
 
   async getListeningStats(
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    user?: string,
   ): Promise<any> {
-    return this.trackRepository.getListeningStats(timeframe);
+    return user
+      ? this.trackRepository.getUserListeningStats(user, timeframe)
+      : this.trackRepository.getListeningStats(timeframe);
   }
 
   async getTopAlbums(
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    user?: string,
   ): Promise<any> {
-    return this.trackRepository.getTopAlbums(timeframe);
+    return user
+      ? this.trackRepository.getUserTopAlbums(user, timeframe)
+      : this.trackRepository.getTopAlbums(timeframe);
   }
 
-  async getRecentMovies(limit: number = 10): Promise<any[]> {
-    return this.movieRepository.findRecent(limit);
+  async getRecentMovies(limit: number = 10, user?: string): Promise<any[]> {
+    return user
+      ? this.movieRepository.findByUser(user, limit)
+      : this.movieRepository.findRecent(limit);
   }
 
   async getMoviesByDirector(
     director: string,
     limit: number = 10,
+    user?: string,
   ): Promise<any[]> {
-    return this.movieRepository.findByDirector(director, limit);
+    return user
+      ? this.movieRepository.findByDirectorAndUser(director, user, limit)
+      : this.movieRepository.findByDirector(director, limit);
   }
 
-  async getMoviesByStudio(studio: string, limit: number = 10): Promise<any[]> {
-    return this.movieRepository.findByStudio(studio, limit);
+  async getMoviesByStudio(
+    studio: string,
+    limit: number = 10,
+    user?: string,
+  ): Promise<any[]> {
+    return user
+      ? this.movieRepository.findByStudioAndUser(studio, user, limit)
+      : this.movieRepository.findByStudio(studio, limit);
   }
 
-  async getMoviesByState(state: string, limit: number = 10): Promise<any[]> {
-    return this.movieRepository.findByState(state, limit);
+  async getMoviesByState(
+    state: string,
+    limit: number = 10,
+    user?: string,
+  ): Promise<any[]> {
+    return user
+      ? this.movieRepository.findByStateAndUser(state, user, limit)
+      : this.movieRepository.findByState(state, limit);
   }
 
   async getMovieWatchingStats(
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    user?: string,
   ): Promise<any> {
-    return this.movieRepository.getWatchingStats(timeframe);
+    return user
+      ? this.movieRepository.getUserWatchingStats(user, timeframe)
+      : this.movieRepository.getWatchingStats(timeframe);
   }
 
   async getTopDirectors(
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    user?: string,
   ): Promise<any> {
-    return this.movieRepository.getTopDirectors(timeframe);
+    return user
+      ? this.movieRepository.getUserTopDirectors(user, timeframe)
+      : this.movieRepository.getTopDirectors(timeframe);
   }
 
-  async getRecentEpisodes(limit: number = 10): Promise<any[]> {
-    return this.episodeRepository.findRecent(limit);
+  async getRecentEpisodes(limit: number = 10, user?: string): Promise<any[]> {
+    return user
+      ? this.episodeRepository.findByUser(user, limit)
+      : this.episodeRepository.findRecent(limit);
   }
 
   async getEpisodesByShow(
     showTitle: string,
     limit: number = 10,
+    user?: string,
   ): Promise<any[]> {
-    return this.episodeRepository.findByShow(showTitle, limit);
+    return user
+      ? this.episodeRepository.findByShowAndUser(showTitle, user, limit)
+      : this.episodeRepository.findByShow(showTitle, limit);
   }
 
   async getEpisodesBySeason(
     showTitle: string,
     season: number,
     limit: number = 50,
+    user?: string,
   ): Promise<any[]> {
-    return this.episodeRepository.findBySeason(showTitle, season, limit);
+    return user
+      ? this.episodeRepository.findBySeasonAndUser(
+          showTitle,
+          season,
+          user,
+          limit,
+        )
+      : this.episodeRepository.findBySeason(showTitle, season, limit);
   }
 
-  async getEpisodesByState(state: string, limit: number = 10): Promise<any[]> {
-    return this.episodeRepository.findByState(state, limit);
+  async getEpisodesByState(
+    state: string,
+    limit: number = 10,
+    user?: string,
+  ): Promise<any[]> {
+    return user
+      ? this.episodeRepository.findByStateAndUser(state, user, limit)
+      : this.episodeRepository.findByState(state, limit);
   }
 
   async getTVWatchingStats(
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    user?: string,
   ): Promise<any> {
-    return this.episodeRepository.getWatchingStats(timeframe);
+    return user
+      ? this.episodeRepository.getUserWatchingStats(user, timeframe)
+      : this.episodeRepository.getWatchingStats(timeframe);
   }
 
-  async getShowsInProgress(): Promise<any> {
-    return this.episodeRepository.getShowsInProgress();
+  async getShowsInProgress(user?: string): Promise<any> {
+    return user
+      ? this.episodeRepository.getUserShowsInProgress(user)
+      : this.episodeRepository.getShowsInProgress();
   }
 
   async getStats(
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    user?: string,
   ): Promise<any> {
-    const [musicStats, movieStats, tvStats] = await Promise.all([
-      this.getListeningStats(timeframe),
-      this.getMovieWatchingStats(timeframe),
-      this.getTVWatchingStats(timeframe),
-    ]);
+    if (user) {
+      const [musicStats, movieStats, tvStats] = await Promise.all([
+        this.getListeningStats(timeframe, user),
+        this.getMovieWatchingStats(timeframe, user),
+        this.getTVWatchingStats(timeframe, user),
+      ]);
 
-    return {
-      music: musicStats,
-      movies: movieStats,
-      tv: tvStats,
-    };
+      return {
+        user,
+        music: musicStats,
+        movies: movieStats,
+        tv: tvStats,
+      };
+    } else {
+      const [musicStats, movieStats, tvStats] = await Promise.all([
+        this.getListeningStats(timeframe),
+        this.getMovieWatchingStats(timeframe),
+        this.getTVWatchingStats(timeframe),
+      ]);
+
+      return {
+        music: musicStats,
+        movies: movieStats,
+        tv: tvStats,
+      };
+    }
   }
 }

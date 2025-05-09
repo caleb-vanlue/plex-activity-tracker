@@ -7,17 +7,26 @@ import { Episode } from 'src/media/entities/episode.entity';
 import { Movie } from 'src/media/entities/movie.entity';
 import { Track } from 'src/media/entities/track.entity';
 
+interface UserMediaSessions {
+  tracks: Map<string, Track>;
+  movies: Map<string, Movie>;
+  episodes: Map<string, Episode>;
+}
+
 @Injectable()
 export class MediaEventService implements OnModuleInit {
   private readonly logger = new Logger(MediaEventService.name);
-  private currentMedia: {
-    track: Track | null;
-    movie: Movie | null;
-    episode: Episode | null;
+
+  private userSessions: Map<string, UserMediaSessions> = new Map();
+
+  private allActiveSessions: {
+    tracks: Map<string, Track>;
+    movies: Map<string, Movie>;
+    episodes: Map<string, Episode>;
   } = {
-    track: null,
-    movie: null,
-    episode: null,
+    tracks: new Map(),
+    movies: new Map(),
+    episodes: new Map(),
   };
 
   constructor(
@@ -33,18 +42,79 @@ export class MediaEventService implements OnModuleInit {
 
   private async initializeCurrentMedia() {
     const [tracks, movies, episodes] = await Promise.all([
-      this.trackRepository.findByState('playing', 1),
-      this.movieRepository.findByState('playing', 1),
-      this.episodeRepository.findByState('playing', 1),
+      this.trackRepository.findByState('playing'),
+      this.movieRepository.findByState('playing'),
+      this.episodeRepository.findByState('playing'),
     ]);
 
-    this.currentMedia = {
-      track: tracks.length > 0 ? tracks[0] : null,
-      movie: movies.length > 0 ? movies[0] : null,
-      episode: episodes.length > 0 ? episodes[0] : null,
-    };
+    tracks.forEach((track) => {
+      if (track.user) {
+        this.addMediaToUserSession(track.user, 'tracks', track);
+        this.allActiveSessions.tracks.set(track.id, track);
+      }
+    });
 
-    this.logger.log('Current media state initialized');
+    movies.forEach((movie) => {
+      if (movie.user) {
+        this.addMediaToUserSession(movie.user, 'movies', movie);
+        this.allActiveSessions.movies.set(movie.id, movie);
+      }
+    });
+
+    episodes.forEach((episode) => {
+      if (episode.user) {
+        this.addMediaToUserSession(episode.user, 'episodes', episode);
+        this.allActiveSessions.episodes.set(episode.id, episode);
+      }
+    });
+
+    this.logger.log('Current media state initialized for all users');
+  }
+
+  private addMediaToUserSession(
+    user: string,
+    mediaType: 'tracks' | 'movies' | 'episodes',
+    media: Track | Movie | Episode,
+  ) {
+    if (!this.userSessions.has(user)) {
+      this.userSessions.set(user, {
+        tracks: new Map<string, Track>(),
+        movies: new Map<string, Movie>(),
+        episodes: new Map<string, Episode>(),
+      });
+    }
+
+    const userSession = this.userSessions.get(user);
+    if (userSession) {
+      if (mediaType === 'tracks') {
+        userSession.tracks.set(media.id, media as Track);
+      } else if (mediaType === 'movies') {
+        userSession.movies.set(media.id, media as Movie);
+      } else if (mediaType === 'episodes') {
+        userSession.episodes.set(media.id, media as Episode);
+      }
+    }
+  }
+
+  private removeMediaFromUserSession(
+    user: string,
+    mediaType: 'tracks' | 'movies' | 'episodes',
+    mediaId: string,
+  ) {
+    if (this.userSessions.has(user)) {
+      const userSession = this.userSessions.get(user);
+      if (userSession) {
+        userSession[mediaType].delete(mediaId);
+
+        if (
+          userSession.tracks.size === 0 &&
+          userSession.movies.size === 0 &&
+          userSession.episodes.size === 0
+        ) {
+          this.userSessions.delete(user);
+        }
+      }
+    }
   }
 
   async processPlexWebhook(
@@ -59,9 +129,15 @@ export class MediaEventService implements OnModuleInit {
     const eventType = payload.event;
     const mediaType = payload.Metadata.type;
     const state = this.mapEventToState(eventType);
+    const user = payload.Account?.title;
+
+    if (!user) {
+      this.logger.warn('Received webhook without user information');
+      return null;
+    }
 
     this.logger.debug(
-      `Processing ${mediaType} event: ${eventType} for ${payload.Metadata?.title}`,
+      `Processing ${mediaType} event: ${eventType} for ${payload.Metadata?.title} by user ${user}`,
     );
 
     switch (mediaType) {
@@ -83,13 +159,20 @@ export class MediaEventService implements OnModuleInit {
     thumbnailId: string | null,
   ): Promise<any> {
     const now = new Date();
+    const user = payload.Account?.title;
+
+    if (!user) {
+      this.logger.warn('Skipping track event without user information');
+      return null;
+    }
+
     const trackData = {
       ratingKey: payload.Metadata.ratingKey,
       title: payload.Metadata.title,
       artist: payload.Metadata.grandparentTitle,
       album: payload.Metadata.parentTitle,
       state,
-      user: payload.Account?.title,
+      user,
       player: payload.Player?.title,
       thumbnailFileId: thumbnailId,
       raw: payload,
@@ -104,7 +187,9 @@ export class MediaEventService implements OnModuleInit {
       });
 
       if (track && track.title && track.artist) {
-        this.logger.log(`Created new track: ${track.title} by ${track.artist}`);
+        this.logger.log(
+          `Created new track: ${track.title} by ${track.artist} for user ${user}`,
+        );
       }
     } else {
       const updates: any = { state };
@@ -115,16 +200,22 @@ export class MediaEventService implements OnModuleInit {
           payload.event === 'media.scrobble' &&
           track.startTime
         ) {
-          const sessionTime = now.getTime() - track.startTime.getTime();
-          updates.listenedMs = (track.listenedMs || 0) + sessionTime;
+          if (track.user === user) {
+            const sessionTime = now.getTime() - track.startTime.getTime();
+            updates.listenedMs = (track.listenedMs || 0) + sessionTime;
+          }
           updates.startTime = now;
         } else if (track.state !== 'playing') {
           updates.startTime = now;
         }
+
+        updates.user = user;
+        updates.player = payload.Player?.title;
       } else if (
         (state === 'paused' || state === 'stopped') &&
         track.state === 'playing' &&
-        track.startTime
+        track.startTime &&
+        track.user === user
       ) {
         updates.endTime = now;
         const sessionTime = now.getTime() - track.startTime.getTime();
@@ -136,32 +227,52 @@ export class MediaEventService implements OnModuleInit {
     }
 
     if (state === 'playing') {
-      const currentTrack = this.currentMedia.track;
-      if (
-        currentTrack &&
-        currentTrack.id !== track?.id &&
-        currentTrack.state === 'playing'
-      ) {
-        this.logger.debug(
-          `Stopping track ${currentTrack.title} because a new track started playing`,
-        );
+      const userSession = this.userSessions.get(user);
+      if (userSession && track) {
+        for (const [trackId, existingTrack] of userSession.tracks.entries()) {
+          if (
+            existingTrack.id !== track.id &&
+            existingTrack.state === 'playing'
+          ) {
+            this.logger.debug(
+              `Stopping track ${existingTrack.title} for user ${user} because a new track started playing`,
+            );
 
-        const updates: any = {
-          state: 'stopped',
-          endTime: now,
-        };
+            const updates: any = {
+              state: 'stopped',
+              endTime: now,
+            };
 
-        if (currentTrack.startTime) {
-          const sessionTime = now.getTime() - currentTrack.startTime.getTime();
-          updates.listenedMs = (currentTrack.listenedMs || 0) + sessionTime;
+            if (existingTrack.startTime) {
+              const sessionTime =
+                now.getTime() - existingTrack.startTime.getTime();
+              updates.listenedMs =
+                (existingTrack.listenedMs || 0) + sessionTime;
+            }
+
+            await this.trackRepository.update(existingTrack.id, updates);
+
+            existingTrack.state = 'stopped';
+            existingTrack.endTime = now;
+
+            this.removeMediaFromUserSession(user, 'tracks', existingTrack.id);
+            this.allActiveSessions.tracks.delete(existingTrack.id);
+          }
         }
-
-        await this.trackRepository.update(currentTrack.id, updates);
       }
 
-      this.currentMedia.track = track;
-    } else if (this.currentMedia.track?.id === track?.id) {
-      this.currentMedia.track = state === 'paused' ? track : null;
+      if (track) {
+        this.addMediaToUserSession(user, 'tracks', track);
+        this.allActiveSessions.tracks.set(track.id, track);
+      }
+    } else if (state === 'paused' || state === 'stopped') {
+      if (track && state === 'paused') {
+        this.addMediaToUserSession(user, 'tracks', track);
+        this.allActiveSessions.tracks.set(track.id, track);
+      } else if (track) {
+        this.removeMediaFromUserSession(user, 'tracks', track.id);
+        this.allActiveSessions.tracks.delete(track.id);
+      }
     }
 
     const eventData = { ...trackData, timestamp: now.toISOString() };
@@ -176,6 +287,13 @@ export class MediaEventService implements OnModuleInit {
     thumbnailId: string | null,
   ): Promise<any> {
     const now = new Date();
+    const user = payload.Account?.title;
+
+    if (!user) {
+      this.logger.warn('Skipping movie event without user information');
+      return null;
+    }
+
     const movieData = {
       ratingKey: payload.Metadata.ratingKey,
       title: payload.Metadata.title,
@@ -185,7 +303,7 @@ export class MediaEventService implements OnModuleInit {
       summary: payload.Metadata.summary,
       duration: payload.Metadata.duration,
       state,
-      user: payload.Account?.title,
+      user,
       player: payload.Player?.title,
       thumbnailFileId: thumbnailId,
       raw: payload,
@@ -199,7 +317,9 @@ export class MediaEventService implements OnModuleInit {
         startTime: now,
       });
 
-      this.logger.log(`Created new movie: ${movie.title} (${movie.year})`);
+      this.logger.log(
+        `Created new movie: ${movie.title} (${movie.year}) for user ${user}`,
+      );
     } else {
       const updates: any = { state };
 
@@ -209,22 +329,27 @@ export class MediaEventService implements OnModuleInit {
           payload.event === 'media.scrobble' &&
           movie.startTime
         ) {
-          const sessionTime = now.getTime() - movie.startTime.getTime();
-          updates.watchedMs = (movie.watchedMs || 0) + sessionTime;
+          if (movie.user === user) {
+            const sessionTime = now.getTime() - movie.startTime.getTime();
+            updates.watchedMs = (movie.watchedMs || 0) + sessionTime;
 
-          if (movie.duration) {
-            updates.percentComplete =
-              updates.watchedMs / (movie.duration * 1000);
+            if (movie.duration) {
+              updates.percentComplete =
+                updates.watchedMs / (movie.duration * 1000);
+            }
           }
-
           updates.startTime = now;
         } else if (movie.state !== 'playing') {
           updates.startTime = now;
         }
+
+        updates.user = user;
+        updates.player = payload.Player?.title;
       } else if (
         (state === 'paused' || state === 'stopped') &&
         movie.state === 'playing' &&
-        movie.startTime
+        movie.startTime &&
+        movie.user === user
       ) {
         updates.endTime = now;
         const sessionTime = now.getTime() - movie.startTime.getTime();
@@ -240,37 +365,56 @@ export class MediaEventService implements OnModuleInit {
     }
 
     if (state === 'playing') {
-      const currentMovie = this.currentMedia.movie;
-      if (
-        currentMovie &&
-        currentMovie.id !== movie?.id &&
-        currentMovie.state === 'playing'
-      ) {
-        this.logger.debug(
-          `Stopping movie ${currentMovie.title} because a new movie started playing`,
-        );
+      const userSession = this.userSessions.get(user);
+      if (userSession && movie) {
+        for (const [movieId, existingMovie] of userSession.movies.entries()) {
+          if (
+            existingMovie.id !== movie.id &&
+            existingMovie.state === 'playing'
+          ) {
+            this.logger.debug(
+              `Stopping movie ${existingMovie.title} for user ${user} because a new movie started playing`,
+            );
 
-        const updates: any = {
-          state: 'stopped',
-          endTime: now,
-        };
+            const updates: any = {
+              state: 'stopped',
+              endTime: now,
+            };
 
-        if (currentMovie.startTime) {
-          const sessionTime = now.getTime() - currentMovie.startTime.getTime();
-          updates.watchedMs = (currentMovie.watchedMs || 0) + sessionTime;
+            if (existingMovie.startTime) {
+              const sessionTime =
+                now.getTime() - existingMovie.startTime.getTime();
+              updates.watchedMs = (existingMovie.watchedMs || 0) + sessionTime;
 
-          if (currentMovie.duration) {
-            updates.percentComplete =
-              updates.watchedMs / (currentMovie.duration * 1000);
+              if (existingMovie.duration) {
+                updates.percentComplete =
+                  updates.watchedMs / (existingMovie.duration * 1000);
+              }
+            }
+
+            await this.movieRepository.update(existingMovie.id, updates);
+
+            existingMovie.state = 'stopped';
+            existingMovie.endTime = now;
+
+            this.removeMediaFromUserSession(user, 'movies', existingMovie.id);
+            this.allActiveSessions.movies.delete(existingMovie.id);
           }
         }
-
-        await this.movieRepository.update(currentMovie.id, updates);
       }
 
-      this.currentMedia.movie = movie;
-    } else if (this.currentMedia.movie?.id === movie?.id) {
-      this.currentMedia.movie = state === 'paused' ? movie : null;
+      if (movie) {
+        this.addMediaToUserSession(user, 'movies', movie);
+        this.allActiveSessions.movies.set(movie.id, movie);
+      }
+    } else if (state === 'paused' || state === 'stopped') {
+      if (movie && state === 'paused') {
+        this.addMediaToUserSession(user, 'movies', movie);
+        this.allActiveSessions.movies.set(movie.id, movie);
+      } else if (movie) {
+        this.removeMediaFromUserSession(user, 'movies', movie.id);
+        this.allActiveSessions.movies.delete(movie.id);
+      }
     }
 
     const eventData = { ...movieData, timestamp: now.toISOString() };
@@ -285,6 +429,13 @@ export class MediaEventService implements OnModuleInit {
     thumbnailId: string | null,
   ): Promise<any> {
     const now = new Date();
+    const user = payload.Account?.title;
+
+    if (!user) {
+      this.logger.warn('Skipping episode event without user information');
+      return null;
+    }
+
     const episodeData = {
       ratingKey: payload.Metadata.ratingKey,
       title: payload.Metadata.title,
@@ -294,7 +445,7 @@ export class MediaEventService implements OnModuleInit {
       summary: payload.Metadata.summary,
       duration: payload.Metadata.duration,
       state,
-      user: payload.Account?.title,
+      user,
       player: payload.Player?.title,
       thumbnailFileId: thumbnailId,
       raw: payload,
@@ -311,7 +462,7 @@ export class MediaEventService implements OnModuleInit {
       });
 
       this.logger.log(
-        `Created new episode: ${episode.title} (${episode.showTitle} S${episode.season}E${episode.episode})`,
+        `Created new episode: ${episode.title} (${episode.showTitle} S${episode.season}E${episode.episode}) for user ${user}`,
       );
     } else {
       const updates: any = { state };
@@ -322,22 +473,27 @@ export class MediaEventService implements OnModuleInit {
           payload.event === 'media.scrobble' &&
           episode.startTime
         ) {
-          const sessionTime = now.getTime() - episode.startTime.getTime();
-          updates.watchedMs = (episode.watchedMs || 0) + sessionTime;
+          if (episode.user === user) {
+            const sessionTime = now.getTime() - episode.startTime.getTime();
+            updates.watchedMs = (episode.watchedMs || 0) + sessionTime;
 
-          if (episode.duration) {
-            updates.percentComplete =
-              updates.watchedMs / (episode.duration * 1000);
+            if (episode.duration) {
+              updates.percentComplete =
+                updates.watchedMs / (episode.duration * 1000);
+            }
           }
-
           updates.startTime = now;
         } else if (episode.state !== 'playing') {
           updates.startTime = now;
         }
+
+        updates.user = user;
+        updates.player = payload.Player?.title;
       } else if (
         (state === 'paused' || state === 'stopped') &&
         episode.state === 'playing' &&
-        episode.startTime
+        episode.startTime &&
+        episode.user === user
       ) {
         updates.endTime = now;
         const sessionTime = now.getTime() - episode.startTime.getTime();
@@ -354,38 +510,64 @@ export class MediaEventService implements OnModuleInit {
     }
 
     if (state === 'playing') {
-      const currentEpisode = this.currentMedia.episode;
-      if (
-        currentEpisode &&
-        currentEpisode.id !== episode?.id &&
-        currentEpisode.state === 'playing'
-      ) {
-        this.logger.debug(
-          `Stopping episode ${currentEpisode.title} because a new episode started playing`,
-        );
+      const userSession = this.userSessions.get(user);
+      if (userSession && episode) {
+        for (const [
+          episodeId,
+          existingEpisode,
+        ] of userSession.episodes.entries()) {
+          if (
+            existingEpisode.id !== episode.id &&
+            existingEpisode.state === 'playing'
+          ) {
+            this.logger.debug(
+              `Stopping episode ${existingEpisode.title} for user ${user} because a new episode started playing`,
+            );
 
-        const updates: any = {
-          state: 'stopped',
-          endTime: now,
-        };
+            const updates: any = {
+              state: 'stopped',
+              endTime: now,
+            };
 
-        if (currentEpisode.startTime) {
-          const sessionTime =
-            now.getTime() - currentEpisode.startTime.getTime();
-          updates.watchedMs = (currentEpisode.watchedMs || 0) + sessionTime;
+            if (existingEpisode.startTime) {
+              const sessionTime =
+                now.getTime() - existingEpisode.startTime.getTime();
+              updates.watchedMs =
+                (existingEpisode.watchedMs || 0) + sessionTime;
 
-          if (currentEpisode.duration) {
-            updates.percentComplete =
-              updates.watchedMs / (currentEpisode.duration * 1000);
+              if (existingEpisode.duration) {
+                updates.percentComplete =
+                  updates.watchedMs / (existingEpisode.duration * 1000);
+              }
+            }
+
+            await this.episodeRepository.update(existingEpisode.id, updates);
+
+            existingEpisode.state = 'stopped';
+            existingEpisode.endTime = now;
+
+            this.removeMediaFromUserSession(
+              user,
+              'episodes',
+              existingEpisode.id,
+            );
+            this.allActiveSessions.episodes.delete(existingEpisode.id);
           }
         }
-
-        await this.episodeRepository.update(currentEpisode.id, updates);
       }
 
-      this.currentMedia.episode = episode;
-    } else if (this.currentMedia.episode?.id === episode?.id) {
-      this.currentMedia.episode = state === 'paused' ? episode : null;
+      if (episode) {
+        this.addMediaToUserSession(user, 'episodes', episode);
+        this.allActiveSessions.episodes.set(episode.id, episode);
+      }
+    } else if (state === 'paused' || state === 'stopped') {
+      if (episode && state === 'paused') {
+        this.addMediaToUserSession(user, 'episodes', episode);
+        this.allActiveSessions.episodes.set(episode.id, episode);
+      } else if (episode) {
+        this.removeMediaFromUserSession(user, 'episodes', episode.id);
+        this.allActiveSessions.episodes.delete(episode.id);
+      }
     }
 
     const eventData = { ...episodeData, timestamp: now.toISOString() };
@@ -394,11 +576,48 @@ export class MediaEventService implements OnModuleInit {
     return episode;
   }
 
-  public getCurrentMedia(type: string): any {
-    if (type === 'track' || type === 'movie' || type === 'episode') {
-      return this.currentMedia[type];
+  public getCurrentMedia(type: string, user?: string): any {
+    if (user) {
+      const userSession = this.userSessions.get(user);
+
+      if (!userSession) {
+        return type === 'all' ? { tracks: [], movies: [], episodes: [] } : [];
+      }
+
+      if (type === 'track') {
+        return Array.from(userSession.tracks.values());
+      } else if (type === 'movie') {
+        return Array.from(userSession.movies.values());
+      } else if (type === 'episode') {
+        return Array.from(userSession.episodes.values());
+      } else if (type === 'all') {
+        return {
+          tracks: Array.from(userSession.tracks.values()),
+          movies: Array.from(userSession.movies.values()),
+          episodes: Array.from(userSession.episodes.values()),
+        };
+      }
+    } else {
+      if (type === 'track') {
+        return Array.from(this.allActiveSessions.tracks.values());
+      } else if (type === 'movie') {
+        return Array.from(this.allActiveSessions.movies.values());
+      } else if (type === 'episode') {
+        return Array.from(this.allActiveSessions.episodes.values());
+      } else if (type === 'all') {
+        return {
+          tracks: Array.from(this.allActiveSessions.tracks.values()),
+          movies: Array.from(this.allActiveSessions.movies.values()),
+          episodes: Array.from(this.allActiveSessions.episodes.values()),
+        };
+      }
     }
-    return null;
+
+    return [];
+  }
+
+  public getActiveUsers(): string[] {
+    return Array.from(this.userSessions.keys());
   }
 
   private mapEventToState(event: string): string {

@@ -15,8 +15,8 @@ export class EpisodeRepository extends BaseMediaRepository<Episode> {
 
   async findByShow(showTitle: string, limit: number = 10): Promise<Episode[]> {
     return this.repository.find({
-      where: { showTitle } as any,
-      order: { startTime: 'DESC' } as any,
+      where: { showTitle },
+      order: { startTime: 'DESC' },
       take: limit,
     });
   }
@@ -27,8 +27,33 @@ export class EpisodeRepository extends BaseMediaRepository<Episode> {
     limit: number = 50,
   ): Promise<Episode[]> {
     return this.repository.find({
-      where: { showTitle, season } as any,
-      order: { episode: 'ASC' } as any,
+      where: { showTitle, season },
+      order: { episode: 'ASC' },
+      take: limit,
+    });
+  }
+
+  async findByShowAndUser(
+    showTitle: string,
+    user: string,
+    limit: number = 10,
+  ): Promise<Episode[]> {
+    return this.repository.find({
+      where: { showTitle, user },
+      order: { startTime: 'DESC' },
+      take: limit,
+    });
+  }
+
+  async findBySeasonAndUser(
+    showTitle: string,
+    season: number,
+    user: string,
+    limit: number = 50,
+  ): Promise<Episode[]> {
+    return this.repository.find({
+      where: { showTitle, season, user },
+      order: { episode: 'ASC' },
       take: limit,
     });
   }
@@ -36,36 +61,127 @@ export class EpisodeRepository extends BaseMediaRepository<Episode> {
   async getWatchingStats(
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
   ): Promise<any> {
-    const dateCondition = this.getTimeframeCondition(timeframe, 'startTime');
+    const timeCondition = this.getTimeframeCondition(timeframe, 'startTime');
 
-    const query = `
+    const statsQuery = `
+      SELECT 
+        COUNT(*) as "totalEpisodes",
+        COUNT(DISTINCT "showTitle") as "uniqueShows",
+        SUM("watchedMs") as "totalWatchedMs"
+      FROM episodes
+      WHERE "watchedMs" IS NOT NULL
+      ${timeCondition}
+    `;
+
+    const topShowsQuery = `
       SELECT 
         "showTitle",
-        COUNT(*) as episode_count,
-        SUM("watchedMs") as total_watched_ms
+        COUNT(*) as "episodeCount",
+        SUM("watchedMs") as "watchedMs"
       FROM episodes
-      WHERE "watchedMs" IS NOT NULL ${dateCondition}
+      WHERE "watchedMs" IS NOT NULL
+      ${timeCondition}
       GROUP BY "showTitle"
-      ORDER BY total_watched_ms DESC
+      ORDER BY "watchedMs" DESC
+      LIMIT 5
+    `;
+
+    const [stats, topShows] = await Promise.all([
+      this.query(statsQuery),
+      this.query(topShowsQuery),
+    ]);
+
+    return {
+      stats: stats[0],
+      topShows,
+    };
+  }
+
+  async getUserWatchingStats(
+    user: string,
+    timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+  ): Promise<any> {
+    const timeCondition = this.getTimeframeCondition(timeframe, 'startTime');
+    const userCondition = this.getUserCondition(user);
+
+    const statsQuery = `
+      SELECT 
+        COUNT(*) as "totalEpisodes",
+        COUNT(DISTINCT "showTitle") as "uniqueShows",
+        SUM("watchedMs") as "totalWatchedMs"
+      FROM episodes
+      WHERE "watchedMs" IS NOT NULL
+      ${timeCondition}
+      ${userCondition}
+    `;
+
+    const topShowsQuery = `
+      SELECT 
+        "showTitle",
+        COUNT(*) as "episodeCount",
+        SUM("watchedMs") as "watchedMs"
+      FROM episodes
+      WHERE "watchedMs" IS NOT NULL
+      ${timeCondition}
+      ${userCondition}
+      GROUP BY "showTitle"
+      ORDER BY "watchedMs" DESC
+      LIMIT 5
+    `;
+
+    const [stats, topShows] = await Promise.all([
+      this.query(statsQuery),
+      this.query(topShowsQuery),
+    ]);
+
+    return {
+      user,
+      stats: stats[0],
+      topShows,
+    };
+  }
+
+  async getShowsInProgress(): Promise<any> {
+    const query = `
+      WITH show_progress AS (
+        SELECT 
+          "showTitle",
+          "season",
+          COUNT(*) as "watchedEpisodes",
+          MAX("percentComplete") as "maxProgress",
+          AVG("percentComplete") as "avgProgress",
+          MAX("startTime") as "lastWatched"
+        FROM episodes
+        WHERE "watchedMs" IS NOT NULL AND "percentComplete" > 0
+        GROUP BY "showTitle", "season"
+        ORDER BY "lastWatched" DESC
+      )
+      SELECT * FROM show_progress
       LIMIT 10
     `;
 
     return this.query(query);
   }
 
-  async getShowsInProgress(): Promise<any> {
+  async getUserShowsInProgress(user: string): Promise<any> {
     const query = `
-      SELECT 
-        "showTitle",
-        COUNT(*) as episode_count,
-        MAX("startTime") as last_watched
-      FROM episodes
-      WHERE state != 'stopped'
-      GROUP BY "showTitle"
-      ORDER BY last_watched DESC
+      WITH show_progress AS (
+        SELECT 
+          "showTitle",
+          "season",
+          COUNT(*) as "watchedEpisodes",
+          MAX("percentComplete") as "maxProgress",
+          AVG("percentComplete") as "avgProgress",
+          MAX("startTime") as "lastWatched"
+        FROM episodes
+        WHERE "watchedMs" IS NOT NULL AND "percentComplete" > 0 AND "user" = $1
+        GROUP BY "showTitle", "season"
+        ORDER BY "lastWatched" DESC
+      )
+      SELECT * FROM show_progress
       LIMIT 10
     `;
 
-    return this.query(query);
+    return this.query(query, [user]);
   }
 }

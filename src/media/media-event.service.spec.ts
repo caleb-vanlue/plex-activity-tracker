@@ -1,93 +1,141 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { MediaService } from './media.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { MediaEventService } from './media-event.service';
 import { TrackRepository } from './repositories/track.repository';
 import { MovieRepository } from './repositories/movie.repository';
 import { EpisodeRepository } from './repositories/episode.repository';
-import { MediaEventService } from './media-event.service';
-import { Episode } from './entities/episode.entity';
-import { Movie } from './entities/movie.entity';
 import { Track } from './entities/track.entity';
+import { Movie } from './entities/movie.entity';
+import { Episode } from './entities/episode.entity';
 
-describe('MediaService', () => {
-  let service: MediaService;
+describe('MediaEventService', () => {
+  let service: MediaEventService;
   let trackRepository: jest.Mocked<TrackRepository>;
   let movieRepository: jest.Mocked<MovieRepository>;
   let episodeRepository: jest.Mocked<EpisodeRepository>;
-  let mediaEventService: jest.Mocked<MediaEventService>;
+  let eventEmitter: jest.Mocked<EventEmitter2>;
 
-  const mockTrack = {
+  const mockTrack1: Partial<Track> = {
     id: '1',
-    title: 'Test Track',
+    ratingKey: 'track1',
+    title: 'Test Track 1',
     artist: 'Test Artist',
     album: 'Test Album',
+    state: 'playing',
+    user: 'user1',
+    startTime: new Date(),
+    listenedMs: 0,
   };
 
-  const mockMovie = {
+  const mockTrack2: Partial<Track> = {
+    id: '2',
+    ratingKey: 'track2',
+    title: 'Test Track 2',
+    artist: 'Test Artist',
+    album: 'Test Album',
+    state: 'playing',
+    user: 'user2',
+    startTime: new Date(),
+    listenedMs: 0,
+  };
+
+  const mockTrack3: Partial<Track> = {
+    id: '3',
+    ratingKey: 'track3',
+    title: 'Test Track 3',
+    artist: 'Another Artist',
+    album: 'Another Album',
+    state: 'playing',
+    user: 'user1',
+    startTime: new Date(),
+    listenedMs: 0,
+  };
+
+  const mockMovie1: Partial<Movie> = {
     id: '1',
-    title: 'Test Movie',
-    year: 2025,
+    ratingKey: 'movie1',
+    title: 'Test Movie 1',
+    year: 2024,
     director: 'Test Director',
+    state: 'playing',
+    user: 'user1',
+    startTime: new Date(),
+    watchedMs: 0,
   };
 
-  const mockEpisode = {
+  const mockMovie2: Partial<Movie> = {
+    id: '2',
+    ratingKey: 'movie2',
+    title: 'Test Movie 2',
+    year: 2024,
+    director: 'Test Director',
+    state: 'playing',
+    user: 'user2',
+    startTime: new Date(),
+    watchedMs: 0,
+  };
+
+  const mockEpisode1: Partial<Episode> = {
     id: '1',
-    title: 'Test Episode',
+    ratingKey: 'episode1',
+    title: 'Test Episode 1',
     showTitle: 'Test Show',
     season: 1,
     episode: 1,
+    state: 'playing',
+    user: 'user1',
+    startTime: new Date(),
+    watchedMs: 0,
   };
 
-  const mockCurrentMedia = {
-    track: mockTrack,
-    movie: null,
-    episode: null,
-  };
-
-  const mockStats = {
-    totalListeningTimeMs: 3600000,
-    topArtists: [{ name: 'Test Artist', count: 10 }],
+  const mockEpisode2: Partial<Episode> = {
+    id: '2',
+    ratingKey: 'episode2',
+    title: 'Test Episode 2',
+    showTitle: 'Test Show',
+    season: 1,
+    episode: 2,
+    state: 'playing',
+    user: 'user2',
+    startTime: new Date(),
+    watchedMs: 0,
   };
 
   beforeEach(async () => {
     const mockTrackRepo = {
-      findById: jest.fn(),
-      findRecent: jest.fn(),
-      findByArtist: jest.fn(),
-      findByAlbum: jest.fn(),
       findByState: jest.fn(),
-      getListeningStats: jest.fn(),
-      getTopAlbums: jest.fn(),
+      findByRatingKey: jest.fn(),
+      findById: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      query: jest.fn(),
     };
 
     const mockMovieRepo = {
-      findById: jest.fn(),
-      findRecent: jest.fn(),
-      findByDirector: jest.fn(),
-      findByStudio: jest.fn(),
       findByState: jest.fn(),
-      getWatchingStats: jest.fn(),
-      getTopDirectors: jest.fn(),
+      findByRatingKey: jest.fn(),
+      findById: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      query: jest.fn(),
     };
 
     const mockEpisodeRepo = {
-      findById: jest.fn(),
-      findRecent: jest.fn(),
-      findByShow: jest.fn(),
-      findBySeason: jest.fn(),
       findByState: jest.fn(),
-      getWatchingStats: jest.fn(),
-      getShowsInProgress: jest.fn(),
+      findByRatingKey: jest.fn(),
+      findById: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      query: jest.fn(),
     };
 
-    const mockMediaEventService = {
-      getCurrentMedia: jest.fn(),
-      processPlexWebhook: jest.fn(),
-      mapEventToState: jest.fn(),
+    const mockEventEmitter = {
+      emit: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        MediaService,
+        MediaEventService,
         {
           provide: TrackRepository,
           useValue: mockTrackRepo,
@@ -101,13 +149,13 @@ describe('MediaService', () => {
           useValue: mockEpisodeRepo,
         },
         {
-          provide: MediaEventService,
-          useValue: mockMediaEventService,
+          provide: EventEmitter2,
+          useValue: mockEventEmitter,
         },
       ],
     }).compile();
 
-    service = module.get<MediaService>(MediaService);
+    service = module.get<MediaEventService>(MediaEventService);
     trackRepository = module.get(
       TrackRepository,
     ) as jest.Mocked<TrackRepository>;
@@ -117,270 +165,518 @@ describe('MediaService', () => {
     episodeRepository = module.get(
       EpisodeRepository,
     ) as jest.Mocked<EpisodeRepository>;
-    mediaEventService = module.get(
-      MediaEventService,
-    ) as jest.Mocked<MediaEventService>;
+    eventEmitter = module.get(EventEmitter2) as jest.Mocked<EventEmitter2>;
+
+    trackRepository.findByState.mockResolvedValue([]);
+    movieRepository.findByState.mockResolvedValue([]);
+    episodeRepository.findByState.mockResolvedValue([]);
+    await service.onModuleInit();
+  });
+
+  describe('processPlexWebhook', () => {
+    it('should process track play event for a user', async () => {
+      trackRepository.findByRatingKey.mockResolvedValue(null);
+      trackRepository.create.mockResolvedValue(mockTrack1 as Track);
+      trackRepository.findById.mockResolvedValue(mockTrack1 as Track);
+
+      const payload = {
+        event: 'media.play',
+        Metadata: {
+          type: 'track',
+          title: 'Test Track 1',
+          ratingKey: 'track1',
+          grandparentTitle: 'Test Artist',
+          parentTitle: 'Test Album',
+        },
+        Account: {
+          title: 'user1',
+        },
+        Player: {
+          title: 'Test Player',
+        },
+      };
+
+      await service.processPlexWebhook(payload, null);
+
+      expect(trackRepository.create).toHaveBeenCalled();
+      expect(trackRepository.create.mock.calls[0][0]).toMatchObject({
+        ratingKey: 'track1',
+        title: 'Test Track 1',
+        artist: 'Test Artist',
+        album: 'Test Album',
+        state: 'playing',
+        user: 'user1',
+      });
+
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        'plex.trackEvent',
+        expect.objectContaining({
+          ratingKey: 'track1',
+          title: 'Test Track 1',
+          artist: 'Test Artist',
+          album: 'Test Album',
+          state: 'playing',
+          user: 'user1',
+        }),
+      );
+
+      const userMedia = service.getCurrentMedia('track', 'user1');
+      expect(userMedia).toHaveLength(1);
+      expect(userMedia[0]).toMatchObject({
+        id: '1',
+        title: 'Test Track 1',
+        artist: 'Test Artist',
+        album: 'Test Album',
+        state: 'playing',
+        user: 'user1',
+      });
+    });
+
+    it('should process movie play event for a user', async () => {
+      movieRepository.findByRatingKey.mockResolvedValue(null);
+      movieRepository.create.mockResolvedValue(mockMovie1 as Movie);
+      movieRepository.findById.mockResolvedValue(mockMovie1 as Movie);
+
+      const payload = {
+        event: 'media.play',
+        Metadata: {
+          type: 'movie',
+          title: 'Test Movie 1',
+          ratingKey: 'movie1',
+          year: 2024,
+          Director: { tag: 'Test Director' },
+        },
+        Account: {
+          title: 'user1',
+        },
+        Player: {
+          title: 'Test Player',
+        },
+      };
+
+      await service.processPlexWebhook(payload, null);
+
+      expect(movieRepository.create).toHaveBeenCalled();
+      expect(movieRepository.create.mock.calls[0][0]).toMatchObject({
+        ratingKey: 'movie1',
+        title: 'Test Movie 1',
+        year: 2024,
+        director: 'Test Director',
+        state: 'playing',
+        user: 'user1',
+      });
+
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        'plex.videoEvent',
+        expect.objectContaining({
+          ratingKey: 'movie1',
+          title: 'Test Movie 1',
+          year: 2024,
+          director: 'Test Director',
+          state: 'playing',
+          user: 'user1',
+        }),
+      );
+
+      const userMedia = service.getCurrentMedia('movie', 'user1');
+      expect(userMedia).toHaveLength(1);
+      expect(userMedia[0]).toMatchObject({
+        id: '1',
+        title: 'Test Movie 1',
+        year: 2024,
+        director: 'Test Director',
+        state: 'playing',
+        user: 'user1',
+      });
+    });
+
+    it('should process episode play event for a user', async () => {
+      episodeRepository.findByRatingKey.mockResolvedValue(null);
+      episodeRepository.create.mockResolvedValue(mockEpisode1 as Episode);
+      episodeRepository.findById.mockResolvedValue(mockEpisode1 as Episode);
+
+      const payload = {
+        event: 'media.play',
+        Metadata: {
+          type: 'episode',
+          title: 'Test Episode 1',
+          ratingKey: 'episode1',
+          grandparentTitle: 'Test Show',
+          parentIndex: 1,
+          index: 1,
+        },
+        Account: {
+          title: 'user1',
+        },
+        Player: {
+          title: 'Test Player',
+        },
+      };
+
+      await service.processPlexWebhook(payload, null);
+
+      expect(episodeRepository.create).toHaveBeenCalled();
+      expect(episodeRepository.create.mock.calls[0][0]).toMatchObject({
+        ratingKey: 'episode1',
+        title: 'Test Episode 1',
+        showTitle: 'Test Show',
+        season: 1,
+        episode: 1,
+        state: 'playing',
+        user: 'user1',
+      });
+
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        'plex.videoEvent',
+        expect.objectContaining({
+          ratingKey: 'episode1',
+          title: 'Test Episode 1',
+          showTitle: 'Test Show',
+          season: 1,
+          episode: 1,
+          state: 'playing',
+          user: 'user1',
+        }),
+      );
+
+      const userMedia = service.getCurrentMedia('episode', 'user1');
+      expect(userMedia).toHaveLength(1);
+      expect(userMedia[0]).toMatchObject({
+        id: '1',
+        title: 'Test Episode 1',
+        showTitle: 'Test Show',
+        season: 1,
+        episode: 1,
+        state: 'playing',
+        user: 'user1',
+      });
+    });
+
+    it('should stop previous track of the same user when playing a new track', async () => {
+      trackRepository.findByRatingKey
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+
+      const existingTrack = {
+        ...mockTrack1,
+        state: 'playing',
+      } as Track;
+
+      trackRepository.create
+        .mockResolvedValueOnce(existingTrack)
+        .mockResolvedValueOnce(mockTrack3 as Track);
+
+      trackRepository.findById
+        .mockResolvedValueOnce(existingTrack)
+        .mockResolvedValueOnce({ ...existingTrack, state: 'stopped' } as Track)
+        .mockResolvedValueOnce(mockTrack3 as Track);
+
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'track',
+            title: 'Test Track 1',
+            ratingKey: 'track1',
+            grandparentTitle: 'Test Artist',
+            parentTitle: 'Test Album',
+          },
+          Account: { title: 'user1' },
+        },
+        null,
+      );
+
+      trackRepository.update.mockClear();
+
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'track',
+            title: 'Test Track 3',
+            ratingKey: 'track3',
+            grandparentTitle: 'Another Artist',
+            parentTitle: 'Another Album',
+          },
+          Account: { title: 'user1' },
+        },
+        null,
+      );
+
+      expect(trackRepository.update).toHaveBeenCalledWith(
+        '1',
+        expect.objectContaining({
+          state: 'stopped',
+        }),
+      );
+    });
+
+    it('should allow different users to have different tracks playing simultaneously', async () => {
+      trackRepository.findByRatingKey.mockResolvedValueOnce(null);
+      trackRepository.create.mockResolvedValueOnce(mockTrack1 as Track);
+      trackRepository.findById.mockResolvedValueOnce(mockTrack1 as Track);
+
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'track',
+            title: 'Test Track 1',
+            ratingKey: 'track1',
+            grandparentTitle: 'Test Artist',
+            parentTitle: 'Test Album',
+          },
+          Account: { title: 'user1' },
+        },
+        null,
+      );
+
+      trackRepository.findByRatingKey.mockResolvedValueOnce(null);
+      trackRepository.create.mockResolvedValueOnce(mockTrack2 as Track);
+      trackRepository.findById.mockResolvedValueOnce(mockTrack2 as Track);
+
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'track',
+            title: 'Test Track 2',
+            ratingKey: 'track2',
+            grandparentTitle: 'Test Artist',
+            parentTitle: 'Test Album',
+          },
+          Account: { title: 'user2' },
+        },
+        null,
+      );
+
+      const user1Media = service.getCurrentMedia('track', 'user1');
+      expect(user1Media).toHaveLength(1);
+      expect(user1Media[0]).toMatchObject({
+        id: '1',
+        title: 'Test Track 1',
+        user: 'user1',
+      });
+
+      const user2Media = service.getCurrentMedia('track', 'user2');
+      expect(user2Media).toHaveLength(1);
+      expect(user2Media[0]).toMatchObject({
+        id: '2',
+        title: 'Test Track 2',
+        user: 'user2',
+      });
+
+      const allTracks = service.getCurrentMedia('track');
+      expect(allTracks).toHaveLength(2);
+      expect(allTracks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: '1', user: 'user1' }),
+          expect.objectContaining({ id: '2', user: 'user2' }),
+        ]),
+      );
+    });
   });
 
   describe('getCurrentMedia', () => {
-    it('should return media for a specific type', async () => {
-      mediaEventService.getCurrentMedia.mockReturnValue(mockTrack);
+    it('should return media of specific type for all users', async () => {
+      trackRepository.findByRatingKey
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      trackRepository.create
+        .mockResolvedValueOnce(mockTrack1 as Track)
+        .mockResolvedValueOnce(mockTrack2 as Track);
+      trackRepository.findById
+        .mockResolvedValueOnce(mockTrack1 as Track)
+        .mockResolvedValueOnce(mockTrack2 as Track);
 
-      const result = await service.getCurrentMedia('track');
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'track',
+            title: 'Test Track 1',
+            ratingKey: 'track1',
+            grandparentTitle: 'Test Artist',
+            parentTitle: 'Test Album',
+          },
+          Account: { title: 'user1' },
+        },
+        null,
+      );
 
-      expect(mediaEventService.getCurrentMedia).toHaveBeenCalledWith('track');
-      expect(result).toEqual(mockTrack);
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'track',
+            title: 'Test Track 2',
+            ratingKey: 'track2',
+            grandparentTitle: 'Test Artist',
+            parentTitle: 'Test Album',
+          },
+          Account: { title: 'user2' },
+        },
+        null,
+      );
+
+      const allTracks = service.getCurrentMedia('track');
+
+      expect(allTracks).toHaveLength(2);
+      expect(allTracks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: '1', user: 'user1' }),
+          expect.objectContaining({ id: '2', user: 'user2' }),
+        ]),
+      );
     });
 
-    it('should return all media types when type is "all"', async () => {
-      mediaEventService.getCurrentMedia
-        .mockReturnValueOnce(mockTrack)
-        .mockReturnValueOnce(null)
-        .mockReturnValueOnce(null);
+    it('should return media of specific type for a specific user', async () => {
+      trackRepository.findByRatingKey
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      trackRepository.create
+        .mockResolvedValueOnce(mockTrack1 as Track)
+        .mockResolvedValueOnce(mockTrack2 as Track);
+      trackRepository.findById
+        .mockResolvedValueOnce(mockTrack1 as Track)
+        .mockResolvedValueOnce(mockTrack2 as Track);
 
-      const result = await service.getCurrentMedia('all');
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'track',
+            title: 'Test Track 1',
+            ratingKey: 'track1',
+            grandparentTitle: 'Test Artist',
+            parentTitle: 'Test Album',
+          },
+          Account: { title: 'user1' },
+        },
+        null,
+      );
 
-      expect(mediaEventService.getCurrentMedia).toHaveBeenCalledWith('track');
-      expect(mediaEventService.getCurrentMedia).toHaveBeenCalledWith('movie');
-      expect(mediaEventService.getCurrentMedia).toHaveBeenCalledWith('episode');
-      expect(result).toEqual({
-        track: mockTrack,
-        movie: null,
-        episode: null,
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'track',
+            title: 'Test Track 2',
+            ratingKey: 'track2',
+            grandparentTitle: 'Test Artist',
+            parentTitle: 'Test Album',
+          },
+          Account: { title: 'user2' },
+        },
+        null,
+      );
+
+      const user1Tracks = service.getCurrentMedia('track', 'user1');
+
+      expect(user1Tracks).toHaveLength(1);
+      expect(user1Tracks[0]).toMatchObject({
+        id: '1',
+        title: 'Test Track 1',
+        user: 'user1',
+      });
+    });
+
+    it('should return all media types for a specific user', async () => {
+      trackRepository.findByRatingKey.mockResolvedValueOnce(null);
+      trackRepository.create.mockResolvedValueOnce(mockTrack1 as Track);
+      trackRepository.findById.mockResolvedValueOnce(mockTrack1 as Track);
+
+      movieRepository.findByRatingKey.mockResolvedValueOnce(null);
+      movieRepository.create.mockResolvedValueOnce(mockMovie1 as Movie);
+      movieRepository.findById.mockResolvedValueOnce(mockMovie1 as Movie);
+
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'track',
+            title: 'Test Track 1',
+            ratingKey: 'track1',
+            grandparentTitle: 'Test Artist',
+            parentTitle: 'Test Album',
+          },
+          Account: { title: 'user1' },
+        },
+        null,
+      );
+
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'movie',
+            title: 'Test Movie 1',
+            ratingKey: 'movie1',
+            year: 2024,
+            Director: { tag: 'Test Director' },
+          },
+          Account: { title: 'user1' },
+        },
+        null,
+      );
+
+      const user1Media = service.getCurrentMedia('all', 'user1');
+
+      expect(user1Media).toMatchObject({
+        tracks: [expect.objectContaining({ id: '1', title: 'Test Track 1' })],
+        movies: [expect.objectContaining({ id: '1', title: 'Test Movie 1' })],
+        episodes: [],
       });
     });
   });
 
-  describe('getMediaById', () => {
-    it('should find track by id', async () => {
-      trackRepository.findById.mockResolvedValue(mockTrack as Track);
+  describe('getActiveUsers', () => {
+    it('should return list of active users', async () => {
+      trackRepository.findByRatingKey
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      trackRepository.create
+        .mockResolvedValueOnce(mockTrack1 as Track)
+        .mockResolvedValueOnce(mockTrack2 as Track);
+      trackRepository.findById
+        .mockResolvedValueOnce(mockTrack1 as Track)
+        .mockResolvedValueOnce(mockTrack2 as Track);
 
-      const result = await service.getMediaById('track', '1');
-
-      expect(trackRepository.findById).toHaveBeenCalledWith('1');
-      expect(result).toEqual(mockTrack);
-    });
-
-    it('should find movie by id', async () => {
-      movieRepository.findById.mockResolvedValue(mockMovie as Movie);
-
-      const result = await service.getMediaById('movie', '1');
-
-      expect(movieRepository.findById).toHaveBeenCalledWith('1');
-      expect(result).toEqual(mockMovie);
-    });
-
-    it('should find episode by id', async () => {
-      episodeRepository.findById.mockResolvedValue(mockEpisode as Episode);
-
-      const result = await service.getMediaById('episode', '1');
-
-      expect(episodeRepository.findById).toHaveBeenCalledWith('1');
-      expect(result).toEqual(mockEpisode);
-    });
-
-    it('should return null for invalid media type', async () => {
-      const result = await service.getMediaById('invalid', '1');
-
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('track-related methods', () => {
-    it('should get recent tracks', async () => {
-      trackRepository.findRecent.mockResolvedValue([mockTrack as Track]);
-
-      const result = await service.getRecentTracks(10);
-
-      expect(trackRepository.findRecent).toHaveBeenCalledWith(10);
-      expect(result).toEqual([mockTrack]);
-    });
-
-    it('should get tracks by artist', async () => {
-      trackRepository.findByArtist.mockResolvedValue([mockTrack as Track]);
-
-      const result = await service.getTracksByArtist('Test Artist', 10);
-
-      expect(trackRepository.findByArtist).toHaveBeenCalledWith(
-        'Test Artist',
-        10,
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'track',
+            title: 'Test Track 1',
+            ratingKey: 'track1',
+            grandparentTitle: 'Test Artist',
+            parentTitle: 'Test Album',
+          },
+          Account: { title: 'user1' },
+        },
+        null,
       );
-      expect(result).toEqual([mockTrack]);
-    });
 
-    it('should get tracks by album', async () => {
-      trackRepository.findByAlbum.mockResolvedValue([mockTrack as Track]);
-
-      const result = await service.getTracksByAlbum('Test Album', 10);
-
-      expect(trackRepository.findByAlbum).toHaveBeenCalledWith(
-        'Test Album',
-        10,
+      await service.processPlexWebhook(
+        {
+          event: 'media.play',
+          Metadata: {
+            type: 'track',
+            title: 'Test Track 2',
+            ratingKey: 'track2',
+            grandparentTitle: 'Test Artist',
+            parentTitle: 'Test Album',
+          },
+          Account: { title: 'user2' },
+        },
+        null,
       );
-      expect(result).toEqual([mockTrack]);
-    });
 
-    it('should get tracks by state', async () => {
-      trackRepository.findByState.mockResolvedValue([mockTrack as Track]);
+      const activeUsers = service.getActiveUsers();
 
-      const result = await service.getTracksByState('playing', 10);
-
-      expect(trackRepository.findByState).toHaveBeenCalledWith('playing', 10);
-      expect(result).toEqual([mockTrack]);
-    });
-
-    it('should get listening stats', async () => {
-      trackRepository.getListeningStats.mockResolvedValue(mockStats);
-
-      const result = await service.getListeningStats('week');
-
-      expect(trackRepository.getListeningStats).toHaveBeenCalledWith('week');
-      expect(result).toEqual(mockStats);
-    });
-  });
-
-  describe('movie-related methods', () => {
-    it('should get recent movies', async () => {
-      movieRepository.findRecent.mockResolvedValue([mockMovie as Movie]);
-
-      const result = await service.getRecentMovies(10);
-
-      expect(movieRepository.findRecent).toHaveBeenCalledWith(10);
-      expect(result).toEqual([mockMovie]);
-    });
-
-    it('should get movies by director', async () => {
-      movieRepository.findByDirector.mockResolvedValue([mockMovie as Movie]);
-
-      const result = await service.getMoviesByDirector('Test Director', 10);
-
-      expect(movieRepository.findByDirector).toHaveBeenCalledWith(
-        'Test Director',
-        10,
-      );
-      expect(result).toEqual([mockMovie]);
-    });
-
-    it('should get movies by studio', async () => {
-      movieRepository.findByStudio.mockResolvedValue([mockMovie as Movie]);
-
-      const result = await service.getMoviesByStudio('Test Studio', 10);
-
-      expect(movieRepository.findByStudio).toHaveBeenCalledWith(
-        'Test Studio',
-        10,
-      );
-      expect(result).toEqual([mockMovie]);
-    });
-
-    it('should get movies by state', async () => {
-      movieRepository.findByState.mockResolvedValue([mockMovie as Movie]);
-
-      const result = await service.getMoviesByState('playing', 10);
-
-      expect(movieRepository.findByState).toHaveBeenCalledWith('playing', 10);
-      expect(result).toEqual([mockMovie]);
-    });
-
-    it('should get movie watching stats', async () => {
-      const movieStats = { totalWatchTimeMs: 7200000 };
-      movieRepository.getWatchingStats.mockResolvedValue(movieStats);
-
-      const result = await service.getMovieWatchingStats('week');
-
-      expect(movieRepository.getWatchingStats).toHaveBeenCalledWith('week');
-      expect(result).toEqual(movieStats);
-    });
-  });
-
-  describe('episode-related methods', () => {
-    it('should get recent episodes', async () => {
-      episodeRepository.findRecent.mockResolvedValue([mockEpisode as Episode]);
-
-      const result = await service.getRecentEpisodes(10);
-
-      expect(episodeRepository.findRecent).toHaveBeenCalledWith(10);
-      expect(result).toEqual([mockEpisode]);
-    });
-
-    it('should get episodes by show', async () => {
-      episodeRepository.findByShow.mockResolvedValue([mockEpisode as Episode]);
-
-      const result = await service.getEpisodesByShow('Test Show', 10);
-
-      expect(episodeRepository.findByShow).toHaveBeenCalledWith(
-        'Test Show',
-        10,
-      );
-      expect(result).toEqual([mockEpisode]);
-    });
-
-    it('should get episodes by season', async () => {
-      episodeRepository.findBySeason.mockResolvedValue([
-        mockEpisode as Episode,
-      ]);
-
-      const result = await service.getEpisodesBySeason('Test Show', 1, 10);
-
-      expect(episodeRepository.findBySeason).toHaveBeenCalledWith(
-        'Test Show',
-        1,
-        10,
-      );
-      expect(result).toEqual([mockEpisode]);
-    });
-
-    it('should get episodes by state', async () => {
-      episodeRepository.findByState.mockResolvedValue([mockEpisode as Episode]);
-
-      const result = await service.getEpisodesByState('playing', 10);
-
-      expect(episodeRepository.findByState).toHaveBeenCalledWith('playing', 10);
-      expect(result).toEqual([mockEpisode]);
-    });
-
-    it('should get tv watching stats', async () => {
-      const tvStats = { totalWatchTimeMs: 10800000 };
-      episodeRepository.getWatchingStats.mockResolvedValue(tvStats);
-
-      const result = await service.getTVWatchingStats('week');
-
-      expect(episodeRepository.getWatchingStats).toHaveBeenCalledWith('week');
-      expect(result).toEqual(tvStats);
-    });
-
-    it('should get shows in progress', async () => {
-      const shows = [{ title: 'Test Show', episodesWatched: 5 }];
-      episodeRepository.getShowsInProgress.mockResolvedValue(shows);
-
-      const result = await service.getShowsInProgress();
-
-      expect(episodeRepository.getShowsInProgress).toHaveBeenCalled();
-      expect(result).toEqual(shows);
-    });
-  });
-
-  describe('getStats', () => {
-    it('should get combined stats for all media types', async () => {
-      const musicStats = { totalListeningTimeMs: 3600000 };
-      const movieStats = { totalWatchTimeMs: 7200000 };
-      const tvStats = { totalWatchTimeMs: 10800000 };
-
-      trackRepository.getListeningStats.mockResolvedValue(musicStats);
-      movieRepository.getWatchingStats.mockResolvedValue(movieStats);
-      episodeRepository.getWatchingStats.mockResolvedValue(tvStats);
-
-      const result = await service.getStats('week');
-
-      expect(trackRepository.getListeningStats).toHaveBeenCalledWith('week');
-      expect(movieRepository.getWatchingStats).toHaveBeenCalledWith('week');
-      expect(episodeRepository.getWatchingStats).toHaveBeenCalledWith('week');
-
-      expect(result).toEqual({
-        music: musicStats,
-        movies: movieStats,
-        tv: tvStats,
-      });
+      expect(activeUsers).toHaveLength(2);
+      expect(activeUsers).toContain('user1');
+      expect(activeUsers).toContain('user2');
     });
   });
 });

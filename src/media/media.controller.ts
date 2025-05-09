@@ -22,9 +22,23 @@ export class MediaController {
     type: String,
     description: 'Type of media to fetch (e.g., all, track, movie, episode)',
   })
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by specific user',
+  })
   @Get('current')
-  async getCurrentMedia(@Query('type') type: string = 'all') {
-    return this.mediaService.getCurrentMedia(type);
+  async getCurrentMedia(
+    @Query('type') type: string = 'all',
+    @Query('user') user?: string,
+  ) {
+    return this.mediaService.getCurrentMedia(type, user);
+  }
+
+  @Get('users/active')
+  async getActiveUsers() {
+    return { users: await this.mediaService.getActiveUsers() };
   }
 
   @ApiQuery({
@@ -52,30 +66,37 @@ export class MediaController {
     type: String,
     description: 'Filter by state',
   })
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by user',
+  })
   @Get('tracks')
   async getTracks(
     @Query('limit') limit: number = 10,
     @Query('artist') artist?: string,
     @Query('album') album?: string,
     @Query('state') state?: string,
+    @Query('user') user?: string,
   ) {
     this.logger.debug(
-      `Fetching tracks with limit: ${limit}, filters: ${JSON.stringify({ artist, album, state })}`,
+      `Fetching tracks with limit: ${limit}, filters: ${JSON.stringify({ artist, album, state, user })}`,
     );
 
     if (artist) {
-      return this.mediaService.getTracksByArtist(artist, limit);
+      return this.mediaService.getTracksByArtist(artist, limit, user);
     }
 
     if (album) {
-      return this.mediaService.getTracksByAlbum(album, limit);
+      return this.mediaService.getTracksByAlbum(album, limit, user);
     }
 
     if (state && state !== 'all') {
-      return this.mediaService.getTracksByState(state, limit);
+      return this.mediaService.getTracksByState(state, limit, user);
     }
 
-    return this.mediaService.getRecentTracks(limit);
+    return this.mediaService.getRecentTracks(limit, user);
   }
 
   @ApiParam({
@@ -101,11 +122,18 @@ export class MediaController {
     default: 'all',
     description: 'Timeframe for the stats',
   })
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by user',
+  })
   @Get('music/stats')
   async getMusicStats(
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    @Query('user') user?: string,
   ) {
-    return this.mediaService.getListeningStats(timeframe);
+    return this.mediaService.getListeningStats(timeframe, user);
   }
 
   @ApiQuery({
@@ -115,12 +143,19 @@ export class MediaController {
     enum: ['day', 'week', 'month', 'all'],
     default: 'all',
     description: 'Timeframe for the stats',
+  })
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by user',
   })
   @Get('music/artists')
   async getTopArtists(
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    @Query('user') user?: string,
   ) {
-    return this.mediaService.getListeningStats(timeframe);
+    return this.mediaService.getListeningStats(timeframe, user);
   }
 
   @ApiQuery({
@@ -131,11 +166,18 @@ export class MediaController {
     default: 'all',
     description: 'Timeframe for the stats',
   })
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by user',
+  })
   @Get('music/albums')
   async getTopAlbums(
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    @Query('user') user?: string,
   ) {
-    return this.mediaService.getTopAlbums(timeframe);
+    return this.mediaService.getTopAlbums(timeframe, user);
   }
 
   @ApiQuery({
@@ -163,30 +205,37 @@ export class MediaController {
     type: String,
     description: 'Filter by state',
   })
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by user',
+  })
   @Get('movies')
   async getMovies(
     @Query('limit') limit: number = 10,
     @Query('director') director?: string,
     @Query('studio') studio?: string,
     @Query('state') state?: string,
+    @Query('user') user?: string,
   ) {
     this.logger.debug(
-      `Fetching movies with limit: ${limit}, filters: ${JSON.stringify({ director, studio, state })}`,
+      `Fetching movies with limit: ${limit}, filters: ${JSON.stringify({ director, studio, state, user })}`,
     );
 
     if (director) {
-      return this.mediaService.getMoviesByDirector(director, limit);
+      return this.mediaService.getMoviesByDirector(director, limit, user);
     }
 
     if (studio) {
-      return this.mediaService.getMoviesByStudio(studio, limit);
+      return this.mediaService.getMoviesByStudio(studio, limit, user);
     }
 
     if (state && state !== 'all') {
-      return this.mediaService.getMoviesByState(state, limit);
+      return this.mediaService.getMoviesByState(state, limit, user);
     }
 
-    return this.mediaService.getRecentMovies(limit);
+    return this.mediaService.getRecentMovies(limit, user);
   }
 
   @ApiParam({
@@ -212,11 +261,18 @@ export class MediaController {
     default: 'all',
     description: 'Timeframe for the stats',
   })
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by user',
+  })
   @Get('movies/stats')
   async getMovieStats(
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    @Query('user') user?: string,
   ) {
-    return this.mediaService.getMovieWatchingStats(timeframe);
+    return this.mediaService.getMovieWatchingStats(timeframe, user);
   }
 
   @ApiQuery({
@@ -227,11 +283,18 @@ export class MediaController {
     default: 'all',
     description: 'Timeframe for the stats',
   })
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by user',
+  })
   @Get('movies/directors')
   async getTopDirectors(
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    @Query('user') user?: string,
   ) {
-    return this.mediaService.getTopDirectors(timeframe);
+    return this.mediaService.getTopDirectors(timeframe, user);
   }
 
   @ApiQuery({
@@ -259,30 +322,37 @@ export class MediaController {
     type: String,
     description: 'Filter by state',
   })
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by user',
+  })
   @Get('tv/episodes')
   async getEpisodes(
     @Query('limit') limit: number = 10,
     @Query('show') show?: string,
     @Query('season') season?: number,
     @Query('state') state?: string,
+    @Query('user') user?: string,
   ) {
     this.logger.debug(
-      `Fetching episodes with limit: ${limit}, filters: ${JSON.stringify({ show, season, state })}`,
+      `Fetching episodes with limit: ${limit}, filters: ${JSON.stringify({ show, season, state, user })}`,
     );
 
     if (show && season) {
-      return this.mediaService.getEpisodesBySeason(show, season, limit);
+      return this.mediaService.getEpisodesBySeason(show, season, limit, user);
     }
 
     if (show) {
-      return this.mediaService.getEpisodesByShow(show, limit);
+      return this.mediaService.getEpisodesByShow(show, limit, user);
     }
 
     if (state && state !== 'all') {
-      return this.mediaService.getEpisodesByState(state, limit);
+      return this.mediaService.getEpisodesByState(state, limit, user);
     }
 
-    return this.mediaService.getRecentEpisodes(limit);
+    return this.mediaService.getRecentEpisodes(limit, user);
   }
 
   @ApiParam({
@@ -308,16 +378,29 @@ export class MediaController {
     default: 'all',
     description: 'Timeframe for the stats',
   })
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by user',
+  })
   @Get('tv/stats')
   async getTVStats(
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    @Query('user') user?: string,
   ) {
-    return this.mediaService.getTVWatchingStats(timeframe);
+    return this.mediaService.getTVWatchingStats(timeframe, user);
   }
 
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by user',
+  })
   @Get('tv/shows')
-  async getShowsInProgress() {
-    return this.mediaService.getShowsInProgress();
+  async getShowsInProgress(@Query('user') user?: string) {
+    return this.mediaService.getShowsInProgress(user);
   }
 
   @ApiQuery({
@@ -328,10 +411,17 @@ export class MediaController {
     default: 'all',
     description: 'Timeframe for the stats',
   })
+  @ApiQuery({
+    name: 'user',
+    required: false,
+    type: String,
+    description: 'Filter by user',
+  })
   @Get('stats')
   async getAllStats(
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    @Query('user') user?: string,
   ) {
-    return this.mediaService.getStats(timeframe);
+    return this.mediaService.getStats(timeframe, user);
   }
 }

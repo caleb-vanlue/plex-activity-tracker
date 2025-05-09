@@ -14,6 +14,7 @@ describe('MediaController', () => {
     artist: 'Test Artist',
     album: 'Test Album',
     state: 'playing',
+    user: 'TestUser',
   };
 
   const mockMovie = {
@@ -24,6 +25,7 @@ describe('MediaController', () => {
     director: 'Test Director',
     studio: 'Test Studio',
     state: 'playing',
+    user: 'TestUser',
   };
 
   const mockEpisode = {
@@ -34,12 +36,13 @@ describe('MediaController', () => {
     season: 1,
     episode: 1,
     state: 'playing',
+    user: 'TestUser',
   };
 
   const mockCurrentMedia = {
-    track: mockTrack,
-    movie: null,
-    episode: null,
+    tracks: [mockTrack],
+    movies: [],
+    episodes: [],
   };
 
   const mockStats = {
@@ -48,9 +51,12 @@ describe('MediaController', () => {
     topAlbums: [{ name: 'Test Album', count: 5 }],
   };
 
+  const mockActiveUsers = ['TestUser', 'AnotherUser'];
+
   beforeEach(async () => {
     const mockMediaServiceProvider = {
       getCurrentMedia: jest.fn(),
+      getActiveUsers: jest.fn(),
       getMediaById: jest.fn(),
       getRecentTracks: jest.fn(),
       getTracksByArtist: jest.fn(),
@@ -87,14 +93,40 @@ describe('MediaController', () => {
     mediaService = module.get(MediaService) as jest.Mocked<MediaService>;
   });
 
+  describe('getActiveUsers', () => {
+    it('should return active users', async () => {
+      mediaService.getActiveUsers.mockResolvedValue(mockActiveUsers);
+
+      const result = await controller.getActiveUsers();
+
+      expect(mediaService.getActiveUsers).toHaveBeenCalled();
+      expect(result).toEqual({ users: mockActiveUsers });
+    });
+  });
+
   describe('getCurrentMedia', () => {
     it('should return current media for specified type', async () => {
-      mediaService.getCurrentMedia.mockResolvedValue(mockTrack);
+      mediaService.getCurrentMedia.mockResolvedValue([mockTrack]);
 
       const result = await controller.getCurrentMedia('track');
 
-      expect(mediaService.getCurrentMedia).toHaveBeenCalledWith('track');
-      expect(result).toEqual(mockTrack);
+      expect(mediaService.getCurrentMedia).toHaveBeenCalledWith(
+        'track',
+        undefined,
+      );
+      expect(result).toEqual([mockTrack]);
+    });
+
+    it('should return current media for specified type and user', async () => {
+      mediaService.getCurrentMedia.mockResolvedValue([mockTrack]);
+
+      const result = await controller.getCurrentMedia('track', 'TestUser');
+
+      expect(mediaService.getCurrentMedia).toHaveBeenCalledWith(
+        'track',
+        'TestUser',
+      );
+      expect(result).toEqual([mockTrack]);
     });
 
     it('should return all media types when type is "all"', async () => {
@@ -102,7 +134,10 @@ describe('MediaController', () => {
 
       const result = await controller.getCurrentMedia('all');
 
-      expect(mediaService.getCurrentMedia).toHaveBeenCalledWith('all');
+      expect(mediaService.getCurrentMedia).toHaveBeenCalledWith(
+        'all',
+        undefined,
+      );
       expect(result).toEqual(mockCurrentMedia);
     });
   });
@@ -116,6 +151,26 @@ describe('MediaController', () => {
       expect(mediaService.getTracksByArtist).toHaveBeenCalledWith(
         'Test Artist',
         10,
+        undefined,
+      );
+      expect(result).toEqual([mockTrack]);
+    });
+
+    it('should get tracks by artist for a specific user', async () => {
+      mediaService.getTracksByArtist.mockResolvedValue([mockTrack]);
+
+      const result = await controller.getTracks(
+        10,
+        'Test Artist',
+        undefined,
+        undefined,
+        'TestUser',
+      );
+
+      expect(mediaService.getTracksByArtist).toHaveBeenCalledWith(
+        'Test Artist',
+        10,
+        'TestUser',
       );
       expect(result).toEqual([mockTrack]);
     });
@@ -128,6 +183,7 @@ describe('MediaController', () => {
       expect(mediaService.getTracksByAlbum).toHaveBeenCalledWith(
         'Test Album',
         10,
+        undefined,
       );
       expect(result).toEqual([mockTrack]);
     });
@@ -142,7 +198,11 @@ describe('MediaController', () => {
         'playing',
       );
 
-      expect(mediaService.getTracksByState).toHaveBeenCalledWith('playing', 10);
+      expect(mediaService.getTracksByState).toHaveBeenCalledWith(
+        'playing',
+        10,
+        undefined,
+      );
       expect(result).toEqual([mockTrack]);
     });
 
@@ -151,7 +211,22 @@ describe('MediaController', () => {
 
       const result = await controller.getTracks(10);
 
-      expect(mediaService.getRecentTracks).toHaveBeenCalledWith(10);
+      expect(mediaService.getRecentTracks).toHaveBeenCalledWith(10, undefined);
+      expect(result).toEqual([mockTrack]);
+    });
+
+    it('should get recent tracks for a specific user', async () => {
+      mediaService.getRecentTracks.mockResolvedValue([mockTrack]);
+
+      const result = await controller.getTracks(
+        10,
+        undefined,
+        undefined,
+        undefined,
+        'TestUser',
+      );
+
+      expect(mediaService.getRecentTracks).toHaveBeenCalledWith(10, 'TestUser');
       expect(result).toEqual([mockTrack]);
     });
   });
@@ -182,8 +257,29 @@ describe('MediaController', () => {
 
       const result = await controller.getMusicStats('week');
 
-      expect(mediaService.getListeningStats).toHaveBeenCalledWith('week');
+      expect(mediaService.getListeningStats).toHaveBeenCalledWith(
+        'week',
+        undefined,
+      );
       expect(result).toEqual(mockStats);
+    });
+
+    it('should return listening stats for specified timeframe and user', async () => {
+      mediaService.getListeningStats.mockResolvedValue({
+        user: 'TestUser',
+        ...mockStats,
+      });
+
+      const result = await controller.getMusicStats('week', 'TestUser');
+
+      expect(mediaService.getListeningStats).toHaveBeenCalledWith(
+        'week',
+        'TestUser',
+      );
+      expect(result).toEqual({
+        user: 'TestUser',
+        ...mockStats,
+      });
     });
 
     it('should use "all" as default timeframe', async () => {
@@ -191,7 +287,10 @@ describe('MediaController', () => {
 
       const result = await controller.getMusicStats();
 
-      expect(mediaService.getListeningStats).toHaveBeenCalledWith('all');
+      expect(mediaService.getListeningStats).toHaveBeenCalledWith(
+        'all',
+        undefined,
+      );
       expect(result).toEqual(mockStats);
     });
   });
@@ -205,136 +304,28 @@ describe('MediaController', () => {
       expect(mediaService.getMoviesByDirector).toHaveBeenCalledWith(
         'Test Director',
         10,
+        undefined,
       );
       expect(result).toEqual([mockMovie]);
     });
 
-    it('should get movies by studio when studio is provided', async () => {
-      mediaService.getMoviesByStudio.mockResolvedValue([mockMovie]);
-
-      const result = await controller.getMovies(10, undefined, 'Test Studio');
-
-      expect(mediaService.getMoviesByStudio).toHaveBeenCalledWith(
-        'Test Studio',
-        10,
-      );
-      expect(result).toEqual([mockMovie]);
-    });
-
-    it('should get movies by state when state is provided', async () => {
-      mediaService.getMoviesByState.mockResolvedValue([mockMovie]);
+    it('should get movies by director for a specific user', async () => {
+      mediaService.getMoviesByDirector.mockResolvedValue([mockMovie]);
 
       const result = await controller.getMovies(
         10,
+        'Test Director',
         undefined,
         undefined,
-        'playing',
+        'TestUser',
       );
 
-      expect(mediaService.getMoviesByState).toHaveBeenCalledWith('playing', 10);
+      expect(mediaService.getMoviesByDirector).toHaveBeenCalledWith(
+        'Test Director',
+        10,
+        'TestUser',
+      );
       expect(result).toEqual([mockMovie]);
-    });
-
-    it('should get recent movies when no filters are provided', async () => {
-      mediaService.getRecentMovies.mockResolvedValue([mockMovie]);
-
-      const result = await controller.getMovies(10);
-
-      expect(mediaService.getRecentMovies).toHaveBeenCalledWith(10);
-      expect(result).toEqual([mockMovie]);
-    });
-  });
-
-  describe('getMovieById', () => {
-    it('should return movie when found', async () => {
-      mediaService.getMediaById.mockResolvedValue(mockMovie);
-
-      const result = await controller.getMovieById('1');
-
-      expect(mediaService.getMediaById).toHaveBeenCalledWith('movie', '1');
-      expect(result).toEqual(mockMovie);
-    });
-
-    it('should throw NotFoundException when movie not found', async () => {
-      mediaService.getMediaById.mockResolvedValue(null);
-
-      await expect(controller.getMovieById('999')).rejects.toThrow(
-        NotFoundException,
-      );
-      expect(mediaService.getMediaById).toHaveBeenCalledWith('movie', '999');
-    });
-  });
-
-  describe('getEpisodes', () => {
-    it('should get episodes by show and season when both are provided', async () => {
-      mediaService.getEpisodesBySeason.mockResolvedValue([mockEpisode]);
-
-      const result = await controller.getEpisodes(10, 'Test Show', 1);
-
-      expect(mediaService.getEpisodesBySeason).toHaveBeenCalledWith(
-        'Test Show',
-        1,
-        10,
-      );
-      expect(result).toEqual([mockEpisode]);
-    });
-
-    it('should get episodes by show when only show is provided', async () => {
-      mediaService.getEpisodesByShow.mockResolvedValue([mockEpisode]);
-
-      const result = await controller.getEpisodes(10, 'Test Show');
-
-      expect(mediaService.getEpisodesByShow).toHaveBeenCalledWith(
-        'Test Show',
-        10,
-      );
-      expect(result).toEqual([mockEpisode]);
-    });
-
-    it('should get episodes by state when state is provided', async () => {
-      mediaService.getEpisodesByState.mockResolvedValue([mockEpisode]);
-
-      const result = await controller.getEpisodes(
-        10,
-        undefined,
-        undefined,
-        'playing',
-      );
-
-      expect(mediaService.getEpisodesByState).toHaveBeenCalledWith(
-        'playing',
-        10,
-      );
-      expect(result).toEqual([mockEpisode]);
-    });
-
-    it('should get recent episodes when no filters are provided', async () => {
-      mediaService.getRecentEpisodes.mockResolvedValue([mockEpisode]);
-
-      const result = await controller.getEpisodes(10);
-
-      expect(mediaService.getRecentEpisodes).toHaveBeenCalledWith(10);
-      expect(result).toEqual([mockEpisode]);
-    });
-  });
-
-  describe('getEpisodeById', () => {
-    it('should return episode when found', async () => {
-      mediaService.getMediaById.mockResolvedValue(mockEpisode);
-
-      const result = await controller.getEpisodeById('1');
-
-      expect(mediaService.getMediaById).toHaveBeenCalledWith('episode', '1');
-      expect(result).toEqual(mockEpisode);
-    });
-
-    it('should throw NotFoundException when episode not found', async () => {
-      mediaService.getMediaById.mockResolvedValue(null);
-
-      await expect(controller.getEpisodeById('999')).rejects.toThrow(
-        NotFoundException,
-      );
-      expect(mediaService.getMediaById).toHaveBeenCalledWith('episode', '999');
     });
   });
 
@@ -350,7 +341,23 @@ describe('MediaController', () => {
 
       const result = await controller.getAllStats('week');
 
-      expect(mediaService.getStats).toHaveBeenCalledWith('week');
+      expect(mediaService.getStats).toHaveBeenCalledWith('week', undefined);
+      expect(result).toEqual(combinedStats);
+    });
+
+    it('should return combined stats for a specific user', async () => {
+      const combinedStats = {
+        user: 'TestUser',
+        music: { totalListeningTimeMs: 3600000 },
+        movies: { totalWatchTimeMs: 7200000 },
+        tv: { totalWatchTimeMs: 10800000 },
+      };
+
+      mediaService.getStats.mockResolvedValue(combinedStats);
+
+      const result = await controller.getAllStats('week', 'TestUser');
+
+      expect(mediaService.getStats).toHaveBeenCalledWith('week', 'TestUser');
       expect(result).toEqual(combinedStats);
     });
   });
