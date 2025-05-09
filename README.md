@@ -1,4 +1,4 @@
-# Plexamp Activity Tracker
+# Plex Activity Tracker
 
 A NestJS-based API that tracks and provides insights into your Plex media consumption habits by processing Plex webhooks. This application captures detailed information about what you're watching and listening to, providing rich statistics and history for your music, movies, and TV shows.
 
