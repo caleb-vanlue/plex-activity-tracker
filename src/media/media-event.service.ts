@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { TrackRepository } from './repositories/track.repository';
 import { MovieRepository } from './repositories/movie.repository';
@@ -8,7 +8,7 @@ import { Movie } from 'src/media/entities/movie.entity';
 import { Track } from 'src/media/entities/track.entity';
 
 @Injectable()
-export class MediaEventService {
+export class MediaEventService implements OnModuleInit {
   private readonly logger = new Logger(MediaEventService.name);
   private currentMedia: {
     track: Track | null;
@@ -26,6 +26,26 @@ export class MediaEventService {
     private movieRepository: MovieRepository,
     private episodeRepository: EpisodeRepository,
   ) {}
+
+  async onModuleInit() {
+    await this.initializeCurrentMedia();
+  }
+
+  private async initializeCurrentMedia() {
+    const [tracks, movies, episodes] = await Promise.all([
+      this.trackRepository.findByState('playing', 1),
+      this.movieRepository.findByState('playing', 1),
+      this.episodeRepository.findByState('playing', 1),
+    ]);
+
+    this.currentMedia = {
+      track: tracks.length > 0 ? tracks[0] : null,
+      movie: movies.length > 0 ? movies[0] : null,
+      episode: episodes.length > 0 ? episodes[0] : null,
+    };
+
+    this.logger.log('Current media state initialized');
+  }
 
   async processPlexWebhook(
     payload: any,
