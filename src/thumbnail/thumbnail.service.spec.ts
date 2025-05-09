@@ -184,7 +184,6 @@ describe('ThumbnailService', () => {
 
   describe('saveThumbnail with enhanced metadata', () => {
     it('should return existing thumbnail ID if found', async () => {
-      // Mock findExistingThumbnail to return an ID
       jest
         .spyOn(service, 'findExistingThumbnail')
         .mockResolvedValue('existing-thumbnail-id');
@@ -206,13 +205,11 @@ describe('ThumbnailService', () => {
         ratingKey: '12345',
       });
 
-      // Should not make a POST request if existing thumbnail found
       expect(httpService.post).not.toHaveBeenCalled();
       expect(result).toBe('existing-thumbnail-id');
     });
 
     it('should upload track thumbnail with album reference', async () => {
-      // Mock findExistingThumbnail to return null (no thumbnail found)
       jest.spyOn(service, 'findExistingThumbnail').mockResolvedValue(null);
 
       const mockFile = {
@@ -243,17 +240,12 @@ describe('ThumbnailService', () => {
 
       expect(httpService.post).toHaveBeenCalled();
 
-      // Verify that parent rating key is used as the reference ID for tracks
       const postCallArgs = (httpService.post as jest.Mock).mock.calls[0];
-      const formData = postCallArgs[1];
-
-      // Can't directly test FormData, but we can check that post was called
       expect(postCallArgs[0]).toBe(`${mockApiUrl}/files/upload`);
       expect(result).toBe(mockFileResponse.id);
     });
 
     it('should upload episode thumbnail with show reference', async () => {
-      // Mock findExistingThumbnail to return null (no thumbnail found)
       jest.spyOn(service, 'findExistingThumbnail').mockResolvedValue(null);
 
       const mockFile = {
@@ -287,7 +279,6 @@ describe('ThumbnailService', () => {
 
       expect(httpService.post).toHaveBeenCalled();
 
-      // Verify the post was called
       const postCallArgs = (httpService.post as jest.Mock).mock.calls[0];
       expect(postCallArgs[0]).toBe(`${mockApiUrl}/files/upload`);
       expect(result).toBe(mockFileResponse.id);
