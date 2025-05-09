@@ -3,26 +3,29 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { TrackRepository } from './repositories/track.repository';
 import { MovieRepository } from './repositories/movie.repository';
 import { EpisodeRepository } from './repositories/episode.repository';
-import { Episode } from 'src/media/entities/episode.entity';
-import { Movie } from 'src/media/entities/movie.entity';
-import { Track } from 'src/media/entities/track.entity';
+import { UserMediaSessionRepository } from './repositories/user-media-session.repository';
+import { Episode } from './entities/episode.entity';
+import { Movie } from './entities/movie.entity';
+import { Track } from './entities/track.entity';
+import { UserMediaSession } from './entities/user-media-session.entity';
+import { UserRepository } from './repositories/user.repository';
 
-interface UserMediaSessions {
-  tracks: Map<string, Track>;
-  movies: Map<string, Movie>;
-  episodes: Map<string, Episode>;
+interface ActiveSessions {
+  tracks: Map<string, UserMediaSession>;
+  movies: Map<string, UserMediaSession>;
+  episodes: Map<string, UserMediaSession>;
 }
 
 @Injectable()
 export class MediaEventService implements OnModuleInit {
   private readonly logger = new Logger(MediaEventService.name);
 
-  private userSessions: Map<string, UserMediaSessions> = new Map();
+  private userSessions: Map<string, ActiveSessions> = new Map();
 
   private allActiveSessions: {
-    tracks: Map<string, Track>;
-    movies: Map<string, Movie>;
-    episodes: Map<string, Episode>;
+    tracks: Map<string, UserMediaSession>;
+    movies: Map<string, UserMediaSession>;
+    episodes: Map<string, UserMediaSession>;
   } = {
     tracks: new Map(),
     movies: new Map(),
@@ -34,6 +37,8 @@ export class MediaEventService implements OnModuleInit {
     private trackRepository: TrackRepository,
     private movieRepository: MovieRepository,
     private episodeRepository: EpisodeRepository,
+    private userRepository: UserRepository,
+    private userMediaSessionRepository: UserMediaSessionRepository,
   ) {}
 
   async onModuleInit() {
@@ -41,80 +46,39 @@ export class MediaEventService implements OnModuleInit {
   }
 
   private async initializeCurrentMedia() {
-    const [tracks, movies, episodes] = await Promise.all([
-      this.trackRepository.findByState('playing'),
-      this.movieRepository.findByState('playing'),
-      this.episodeRepository.findByState('playing'),
-    ]);
+    const activeSessions =
+      await this.userMediaSessionRepository.findAllActive();
 
-    tracks.forEach((track) => {
-      if (track.user) {
-        this.addMediaToUserSession(track.user, 'tracks', track);
-        this.allActiveSessions.tracks.set(track.id, track);
-      }
-    });
+    for (const session of activeSessions) {
+      const userId = session.userId;
 
-    movies.forEach((movie) => {
-      if (movie.user) {
-        this.addMediaToUserSession(movie.user, 'movies', movie);
-        this.allActiveSessions.movies.set(movie.id, movie);
+      if (!this.userSessions.has(userId)) {
+        this.userSessions.set(userId, {
+          tracks: new Map<string, UserMediaSession>(),
+          movies: new Map<string, UserMediaSession>(),
+          episodes: new Map<string, UserMediaSession>(),
+        });
       }
-    });
 
-    episodes.forEach((episode) => {
-      if (episode.user) {
-        this.addMediaToUserSession(episode.user, 'episodes', episode);
-        this.allActiveSessions.episodes.set(episode.id, episode);
+      const userSession = this.userSessions.get(userId);
+      if (!userSession) {
+        this.logger.warn(`User session not found for userId: ${userId}`);
+        continue;
       }
-    });
+
+      if (session.mediaType === 'track' && session.track) {
+        userSession.tracks.set(session.id, session);
+        this.allActiveSessions.tracks.set(session.id, session);
+      } else if (session.mediaType === 'movie' && session.movie) {
+        userSession.movies.set(session.id, session);
+        this.allActiveSessions.movies.set(session.id, session);
+      } else if (session.mediaType === 'episode' && session.episode) {
+        userSession.episodes.set(session.id, session);
+        this.allActiveSessions.episodes.set(session.id, session);
+      }
+    }
 
     this.logger.log('Current media state initialized for all users');
-  }
-
-  private addMediaToUserSession(
-    user: string,
-    mediaType: 'tracks' | 'movies' | 'episodes',
-    media: Track | Movie | Episode,
-  ) {
-    if (!this.userSessions.has(user)) {
-      this.userSessions.set(user, {
-        tracks: new Map<string, Track>(),
-        movies: new Map<string, Movie>(),
-        episodes: new Map<string, Episode>(),
-      });
-    }
-
-    const userSession = this.userSessions.get(user);
-    if (userSession) {
-      if (mediaType === 'tracks') {
-        userSession.tracks.set(media.id, media as Track);
-      } else if (mediaType === 'movies') {
-        userSession.movies.set(media.id, media as Movie);
-      } else if (mediaType === 'episodes') {
-        userSession.episodes.set(media.id, media as Episode);
-      }
-    }
-  }
-
-  private removeMediaFromUserSession(
-    user: string,
-    mediaType: 'tracks' | 'movies' | 'episodes',
-    mediaId: string,
-  ) {
-    if (this.userSessions.has(user)) {
-      const userSession = this.userSessions.get(user);
-      if (userSession) {
-        userSession[mediaType].delete(mediaId);
-
-        if (
-          userSession.tracks.size === 0 &&
-          userSession.movies.size === 0 &&
-          userSession.episodes.size === 0
-        ) {
-          this.userSessions.delete(user);
-        }
-      }
-    }
   }
 
   async processPlexWebhook(
@@ -129,24 +93,26 @@ export class MediaEventService implements OnModuleInit {
     const eventType = payload.event;
     const mediaType = payload.Metadata.type;
     const state = this.mapEventToState(eventType);
-    const user = payload.Account?.title;
+    const userName = payload.Account?.title;
 
-    if (!user) {
+    if (!userName) {
       this.logger.warn('Received webhook without user information');
       return null;
     }
 
+    const user = await this.userRepository.findOrCreate(userName);
+
     this.logger.debug(
-      `Processing ${mediaType} event: ${eventType} for ${payload.Metadata?.title} by user ${user}`,
+      `Processing ${mediaType} event: ${eventType} for ${payload.Metadata?.title} by user ${user.title}`,
     );
 
     switch (mediaType) {
       case 'track':
-        return this.processTrackEvent(payload, state, thumbnailId);
+        return this.processTrackEvent(payload, state, thumbnailId, user.id);
       case 'movie':
-        return this.processMovieEvent(payload, state, thumbnailId);
+        return this.processMovieEvent(payload, state, thumbnailId, user.id);
       case 'episode':
-        return this.processEpisodeEvent(payload, state, thumbnailId);
+        return this.processEpisodeEvent(payload, state, thumbnailId, user.id);
       default:
         this.logger.debug(`Ignoring event for unsupported type: ${mediaType}`);
         return null;
@@ -157,142 +123,177 @@ export class MediaEventService implements OnModuleInit {
     payload: any,
     state: string,
     thumbnailId: string | null,
+    userId: string,
   ): Promise<any> {
     const now = new Date();
-    const user = payload.Account?.title;
 
-    if (!user) {
-      this.logger.warn('Skipping track event without user information');
-      return null;
-    }
-
+    // Create or update the track entity (metadata only)
     const trackData = {
       ratingKey: payload.Metadata.ratingKey,
       title: payload.Metadata.title,
       artist: payload.Metadata.grandparentTitle,
       album: payload.Metadata.parentTitle,
-      state,
-      user,
-      player: payload.Player?.title,
       thumbnailFileId: thumbnailId,
       raw: payload,
     };
 
+    // Find or create track - now just a metadata container without user or state
     let track = await this.trackRepository.findByRatingKey(trackData.ratingKey);
-
     if (!track) {
-      track = await this.trackRepository.create({
-        ...trackData,
-        startTime: now,
-      });
-
-      if (track && track.title && track.artist) {
-        this.logger.log(
-          `Created new track: ${track.title} by ${track.artist} for user ${user}`,
-        );
-      }
-    } else {
-      const updates: any = { state };
-
-      if (state === 'playing') {
-        if (
-          track.state === 'playing' &&
-          payload.event === 'media.scrobble' &&
-          track.startTime
-        ) {
-          if (track.user === user) {
-            const sessionTime = now.getTime() - track.startTime.getTime();
-            updates.listenedMs = (track.listenedMs || 0) + sessionTime;
-          }
-          updates.startTime = now;
-        } else if (track.state !== 'playing') {
-          updates.startTime = now;
-        }
-
-        updates.user = user;
-        updates.player = payload.Player?.title;
-      } else if (
-        (state === 'paused' || state === 'stopped') &&
-        track.state === 'playing' &&
-        track.startTime &&
-        track.user === user
-      ) {
-        updates.endTime = now;
-        const sessionTime = now.getTime() - track.startTime.getTime();
-        updates.listenedMs = (track.listenedMs || 0) + sessionTime;
-      }
-
-      await this.trackRepository.update(track.id, updates);
-      track = await this.trackRepository.findById(track.id);
+      track = await this.trackRepository.create(trackData);
+      this.logger.log(
+        `Created new track metadata: ${track.title} by ${track.artist}`,
+      );
     }
+
+    // Find existing session for this track and user
+    let session = await this.userMediaSessionRepository.findActive(
+      userId,
+      'track',
+      track.id,
+    );
 
     if (state === 'playing') {
-      const userSession = this.userSessions.get(user);
-      if (userSession && track) {
-        for (const [trackId, existingTrack] of userSession.tracks.entries()) {
-          if (
-            existingTrack.id !== track.id &&
-            existingTrack.state === 'playing'
-          ) {
-            this.logger.debug(
-              `Stopping track ${existingTrack.title} for user ${user} because a new track started playing`,
-            );
+      // Stop any other playing tracks for this user
+      const activeSessions =
+        await this.userMediaSessionRepository.findAllActiveTracks(userId);
 
-            const updates: any = {
-              state: 'stopped',
-              endTime: now,
-            };
+      for (const activeSession of activeSessions) {
+        if (activeSession.mediaId !== track.id) {
+          this.logger.debug(
+            `Stopping track ${activeSession.track.title} for user ${userId} because a new track started playing`,
+          );
 
-            if (existingTrack.startTime) {
-              const sessionTime =
-                now.getTime() - existingTrack.startTime.getTime();
-              updates.listenedMs =
-                (existingTrack.listenedMs || 0) + sessionTime;
-            }
+          const endTime = now;
+          const sessionTime =
+            endTime.getTime() - activeSession.startTime.getTime();
 
-            await this.trackRepository.update(existingTrack.id, updates);
+          await this.userMediaSessionRepository.update(activeSession.id, {
+            state: 'stopped',
+            endTime,
+            timeWatchedMs: activeSession.timeWatchedMs + sessionTime,
+          });
 
-            existingTrack.state = 'stopped';
-            existingTrack.endTime = now;
-
-            this.removeMediaFromUserSession(user, 'tracks', existingTrack.id);
-            this.allActiveSessions.tracks.delete(existingTrack.id);
+          // Remove from session maps
+          const userSession = this.userSessions.get(userId);
+          if (userSession) {
+            userSession.tracks.delete(activeSession.id);
           }
+          this.allActiveSessions.tracks.delete(activeSession.id);
         }
       }
 
-      if (track) {
-        this.addMediaToUserSession(user, 'tracks', track);
-        this.allActiveSessions.tracks.set(track.id, track);
+      // Create or update current session
+      if (!session) {
+        session = await this.userMediaSessionRepository.create({
+          userId,
+          mediaType: 'track',
+          mediaId: track.id,
+          track,
+          state: 'playing',
+          startTime: now,
+          player: payload.Player?.title,
+        });
+      } else {
+        if (session.state === 'playing' && payload.event === 'media.scrobble') {
+          // Calculate watched time before restarting
+          const sessionTime = now.getTime() - session.startTime.getTime();
+          await this.userMediaSessionRepository.update(session.id, {
+            timeWatchedMs: session.timeWatchedMs + sessionTime,
+            startTime: now,
+            state: 'playing',
+            player: payload.Player?.title,
+          });
+        } else {
+          await this.userMediaSessionRepository.update(session.id, {
+            state: 'playing',
+            startTime: now,
+            player: payload.Player?.title,
+          });
+        }
+        // Refresh session from database
+        session = await this.userMediaSessionRepository.findById(session.id);
       }
+
+      // Add to session maps
+      if (!this.userSessions.has(userId)) {
+        this.userSessions.set(userId, {
+          tracks: new Map<string, UserMediaSession>(),
+          movies: new Map<string, UserMediaSession>(),
+          episodes: new Map<string, UserMediaSession>(),
+        });
+      }
+
+      const userSession = this.userSessions.get(userId);
+      if (!userSession || !session) {
+        this.logger.warn(`User session not found for userId: ${userId}`);
+        return null;
+      }
+      userSession.tracks.set(session.id, session);
+      this.allActiveSessions.tracks.set(session.id, session);
     } else if (state === 'paused' || state === 'stopped') {
-      if (track && state === 'paused') {
-        this.addMediaToUserSession(user, 'tracks', track);
-        this.allActiveSessions.tracks.set(track.id, track);
-      } else if (track) {
-        this.removeMediaFromUserSession(user, 'tracks', track.id);
-        this.allActiveSessions.tracks.delete(track.id);
+      if (session) {
+        const endTime = now;
+        const sessionTime = endTime.getTime() - session.startTime.getTime();
+
+        await this.userMediaSessionRepository.update(session.id, {
+          state,
+          endTime,
+          timeWatchedMs: session.timeWatchedMs + sessionTime,
+        });
+
+        session = await this.userMediaSessionRepository.findById(session.id);
+        if (!session) {
+          this.logger.warn(`Session not found`);
+          return null;
+        }
+
+        if (state === 'paused') {
+          // Keep in session maps for paused state
+          const userSession = this.userSessions.get(userId);
+          if (userSession) {
+            userSession.tracks.set(session.id, session);
+          }
+          this.allActiveSessions.tracks.set(session.id, session);
+        } else {
+          // Remove from session maps for stopped state
+          const userSession = this.userSessions.get(userId);
+          if (userSession) {
+            userSession.tracks.delete(session.id);
+          }
+          this.allActiveSessions.tracks.delete(session.id);
+        }
       }
     }
 
-    const eventData = { ...trackData, timestamp: now.toISOString() };
+    // Emit event with session details
+    const eventData = {
+      type: 'track',
+      trackId: track.id,
+      sessionId: session?.id,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      state,
+      userId,
+      player: payload.Player?.title,
+      timestamp: now.toISOString(),
+    };
+
     this.eventEmitter.emit('plex.trackEvent', eventData);
 
-    return track;
+    return { track, session };
   }
 
+  // Similar implementations for processMovieEvent and processEpisodeEvent...
   private async processMovieEvent(
     payload: any,
     state: string,
     thumbnailId: string | null,
+    userId: string,
   ): Promise<any> {
+    // Implementation similar to processTrackEvent but for movies
     const now = new Date();
-    const user = payload.Account?.title;
-
-    if (!user) {
-      this.logger.warn('Skipping movie event without user information');
-      return null;
-    }
 
     const movieData = {
       ratingKey: payload.Metadata.ratingKey,
@@ -302,139 +303,150 @@ export class MediaEventService implements OnModuleInit {
       studio: payload.Metadata.studio,
       summary: payload.Metadata.summary,
       duration: payload.Metadata.duration,
-      state,
-      user,
-      player: payload.Player?.title,
       thumbnailFileId: thumbnailId,
       raw: payload,
     };
 
     let movie = await this.movieRepository.findByRatingKey(movieData.ratingKey);
-
     if (!movie) {
-      movie = await this.movieRepository.create({
-        ...movieData,
-        startTime: now,
-      });
-
+      movie = await this.movieRepository.create(movieData);
       this.logger.log(
-        `Created new movie: ${movie.title} (${movie.year}) for user ${user}`,
+        `Created new movie metadata: ${movie.title} (${movie.year})`,
       );
-    } else {
-      const updates: any = { state };
-
-      if (state === 'playing') {
-        if (
-          movie.state === 'playing' &&
-          payload.event === 'media.scrobble' &&
-          movie.startTime
-        ) {
-          if (movie.user === user) {
-            const sessionTime = now.getTime() - movie.startTime.getTime();
-            updates.watchedMs = (movie.watchedMs || 0) + sessionTime;
-
-            if (movie.duration) {
-              updates.percentComplete =
-                updates.watchedMs / (movie.duration * 1000);
-            }
-          }
-          updates.startTime = now;
-        } else if (movie.state !== 'playing') {
-          updates.startTime = now;
-        }
-
-        updates.user = user;
-        updates.player = payload.Player?.title;
-      } else if (
-        (state === 'paused' || state === 'stopped') &&
-        movie.state === 'playing' &&
-        movie.startTime &&
-        movie.user === user
-      ) {
-        updates.endTime = now;
-        const sessionTime = now.getTime() - movie.startTime.getTime();
-        updates.watchedMs = (movie.watchedMs || 0) + sessionTime;
-
-        if (movie.duration) {
-          updates.percentComplete = updates.watchedMs / (movie.duration * 1000);
-        }
-      }
-
-      await this.movieRepository.update(movie.id, updates);
-      movie = await this.movieRepository.findById(movie.id);
     }
+
+    let session = await this.userMediaSessionRepository.findActive(
+      userId,
+      'movie',
+      movie.id,
+    );
 
     if (state === 'playing') {
-      const userSession = this.userSessions.get(user);
-      if (userSession && movie) {
-        for (const [movieId, existingMovie] of userSession.movies.entries()) {
-          if (
-            existingMovie.id !== movie.id &&
-            existingMovie.state === 'playing'
-          ) {
-            this.logger.debug(
-              `Stopping movie ${existingMovie.title} for user ${user} because a new movie started playing`,
-            );
+      // Stop other playing movies
+      const activeSessions =
+        await this.userMediaSessionRepository.findAllActiveMovies(userId);
 
-            const updates: any = {
-              state: 'stopped',
-              endTime: now,
-            };
+      for (const activeSession of activeSessions) {
+        if (activeSession.mediaId !== movie.id) {
+          await this.userMediaSessionRepository.update(activeSession.id, {
+            state: 'stopped',
+            endTime: now,
+            timeWatchedMs:
+              activeSession.timeWatchedMs +
+              (now.getTime() - activeSession.startTime.getTime()),
+          });
 
-            if (existingMovie.startTime) {
-              const sessionTime =
-                now.getTime() - existingMovie.startTime.getTime();
-              updates.watchedMs = (existingMovie.watchedMs || 0) + sessionTime;
-
-              if (existingMovie.duration) {
-                updates.percentComplete =
-                  updates.watchedMs / (existingMovie.duration * 1000);
-              }
-            }
-
-            await this.movieRepository.update(existingMovie.id, updates);
-
-            existingMovie.state = 'stopped';
-            existingMovie.endTime = now;
-
-            this.removeMediaFromUserSession(user, 'movies', existingMovie.id);
-            this.allActiveSessions.movies.delete(existingMovie.id);
+          const userSession = this.userSessions.get(userId);
+          if (userSession) {
+            userSession.movies.delete(activeSession.id);
           }
+          this.allActiveSessions.movies.delete(activeSession.id);
         }
       }
 
-      if (movie) {
-        this.addMediaToUserSession(user, 'movies', movie);
-        this.allActiveSessions.movies.set(movie.id, movie);
+      // Create or update current session
+      if (!session) {
+        session = await this.userMediaSessionRepository.create({
+          userId,
+          mediaType: 'movie',
+          mediaId: movie.id,
+          movie,
+          state: 'playing',
+          startTime: now,
+          player: payload.Player?.title,
+        });
+      } else {
+        if (session.state === 'playing' && payload.event === 'media.scrobble') {
+          const sessionTime = now.getTime() - session.startTime.getTime();
+          await this.userMediaSessionRepository.update(session.id, {
+            timeWatchedMs: session.timeWatchedMs + sessionTime,
+            startTime: now,
+          });
+        }
+
+        await this.userMediaSessionRepository.update(session.id, {
+          state: 'playing',
+          player: payload.Player?.title,
+        });
+
+        session = await this.userMediaSessionRepository.findById(session.id);
       }
+
+      // Add to session maps
+      if (!this.userSessions.has(userId)) {
+        this.userSessions.set(userId, {
+          tracks: new Map<string, UserMediaSession>(),
+          movies: new Map<string, UserMediaSession>(),
+          episodes: new Map<string, UserMediaSession>(),
+        });
+      }
+
+      const userSession = this.userSessions.get(userId);
+      if (!userSession || !session) {
+        this.logger.warn(`User session not found for userId: ${userId}`);
+        return null;
+      }
+      userSession.movies.set(session.id, session);
+      this.allActiveSessions.movies.set(session.id, session);
     } else if (state === 'paused' || state === 'stopped') {
-      if (movie && state === 'paused') {
-        this.addMediaToUserSession(user, 'movies', movie);
-        this.allActiveSessions.movies.set(movie.id, movie);
-      } else if (movie) {
-        this.removeMediaFromUserSession(user, 'movies', movie.id);
-        this.allActiveSessions.movies.delete(movie.id);
+      if (session) {
+        const sessionTime = now.getTime() - session.startTime.getTime();
+
+        await this.userMediaSessionRepository.update(session.id, {
+          state,
+          endTime: now,
+          timeWatchedMs: session.timeWatchedMs + sessionTime,
+        });
+
+        session = await this.userMediaSessionRepository.findById(session.id);
+        if (!session) {
+          this.logger.warn(`Session not found`);
+          return null;
+        }
+
+        if (state === 'paused') {
+          const userSession = this.userSessions.get(userId);
+          if (userSession) {
+            userSession.movies.set(session.id, session);
+          }
+          this.allActiveSessions.movies.set(session.id, session);
+        } else {
+          const userSession = this.userSessions.get(userId);
+          if (userSession) {
+            userSession.movies.delete(session.id);
+          }
+          this.allActiveSessions.movies.delete(session.id);
+        }
       }
     }
 
-    const eventData = { ...movieData, timestamp: now.toISOString() };
+    const eventData = {
+      type: 'movie',
+      movieId: movie.id,
+      sessionId: session?.id,
+      title: movie.title,
+      year: movie.year,
+      director: movie.director,
+      studio: movie.studio,
+      state,
+      userId,
+      player: payload.Player?.title,
+      timestamp: now.toISOString(),
+    };
+
     this.eventEmitter.emit('plex.videoEvent', eventData);
 
-    return movie;
+    return { movie, session };
   }
 
   private async processEpisodeEvent(
     payload: any,
     state: string,
     thumbnailId: string | null,
+    userId: string,
   ): Promise<any> {
+    // Implementation similar to processTrackEvent but for episodes
     const now = new Date();
-    const user = payload.Account?.title;
-
-    if (!user) {
-      this.logger.warn('Skipping episode event without user information');
-      return null;
-    }
 
     const episodeData = {
       ratingKey: payload.Metadata.ratingKey,
@@ -444,9 +456,6 @@ export class MediaEventService implements OnModuleInit {
       episode: payload.Metadata.index,
       summary: payload.Metadata.summary,
       duration: payload.Metadata.duration,
-      state,
-      user,
-      player: payload.Player?.title,
       thumbnailFileId: thumbnailId,
       raw: payload,
     };
@@ -454,161 +463,263 @@ export class MediaEventService implements OnModuleInit {
     let episode = await this.episodeRepository.findByRatingKey(
       episodeData.ratingKey,
     );
-
     if (!episode) {
-      episode = await this.episodeRepository.create({
-        ...episodeData,
-        startTime: now,
-      });
-
+      episode = await this.episodeRepository.create(episodeData);
       this.logger.log(
-        `Created new episode: ${episode.title} (${episode.showTitle} S${episode.season}E${episode.episode}) for user ${user}`,
+        `Created new episode metadata: ${episode.title} (${episode.showTitle} S${episode.season}E${episode.episode})`,
       );
-    } else {
-      const updates: any = { state };
-
-      if (state === 'playing') {
-        if (
-          episode.state === 'playing' &&
-          payload.event === 'media.scrobble' &&
-          episode.startTime
-        ) {
-          if (episode.user === user) {
-            const sessionTime = now.getTime() - episode.startTime.getTime();
-            updates.watchedMs = (episode.watchedMs || 0) + sessionTime;
-
-            if (episode.duration) {
-              updates.percentComplete =
-                updates.watchedMs / (episode.duration * 1000);
-            }
-          }
-          updates.startTime = now;
-        } else if (episode.state !== 'playing') {
-          updates.startTime = now;
-        }
-
-        updates.user = user;
-        updates.player = payload.Player?.title;
-      } else if (
-        (state === 'paused' || state === 'stopped') &&
-        episode.state === 'playing' &&
-        episode.startTime &&
-        episode.user === user
-      ) {
-        updates.endTime = now;
-        const sessionTime = now.getTime() - episode.startTime.getTime();
-        updates.watchedMs = (episode.watchedMs || 0) + sessionTime;
-
-        if (episode.duration) {
-          updates.percentComplete =
-            updates.watchedMs / (episode.duration * 1000);
-        }
-      }
-
-      await this.episodeRepository.update(episode.id, updates);
-      episode = await this.episodeRepository.findById(episode.id);
     }
 
+    let session = await this.userMediaSessionRepository.findActive(
+      userId,
+      'episode',
+      episode.id,
+    );
+
+    // The rest is similar to the movie implementation
     if (state === 'playing') {
-      const userSession = this.userSessions.get(user);
-      if (userSession && episode) {
-        for (const [
-          episodeId,
-          existingEpisode,
-        ] of userSession.episodes.entries()) {
-          if (
-            existingEpisode.id !== episode.id &&
-            existingEpisode.state === 'playing'
-          ) {
-            this.logger.debug(
-              `Stopping episode ${existingEpisode.title} for user ${user} because a new episode started playing`,
-            );
+      // Stop other playing episodes
+      const activeSessions =
+        await this.userMediaSessionRepository.findAllActiveEpisodes(userId);
 
-            const updates: any = {
-              state: 'stopped',
-              endTime: now,
-            };
+      for (const activeSession of activeSessions) {
+        if (activeSession.mediaId !== episode.id) {
+          await this.userMediaSessionRepository.update(activeSession.id, {
+            state: 'stopped',
+            endTime: now,
+            timeWatchedMs:
+              activeSession.timeWatchedMs +
+              (now.getTime() - activeSession.startTime.getTime()),
+          });
 
-            if (existingEpisode.startTime) {
-              const sessionTime =
-                now.getTime() - existingEpisode.startTime.getTime();
-              updates.watchedMs =
-                (existingEpisode.watchedMs || 0) + sessionTime;
-
-              if (existingEpisode.duration) {
-                updates.percentComplete =
-                  updates.watchedMs / (existingEpisode.duration * 1000);
-              }
-            }
-
-            await this.episodeRepository.update(existingEpisode.id, updates);
-
-            existingEpisode.state = 'stopped';
-            existingEpisode.endTime = now;
-
-            this.removeMediaFromUserSession(
-              user,
-              'episodes',
-              existingEpisode.id,
-            );
-            this.allActiveSessions.episodes.delete(existingEpisode.id);
+          const userSession = this.userSessions.get(userId);
+          if (userSession) {
+            userSession.episodes.delete(activeSession.id);
           }
+          this.allActiveSessions.episodes.delete(activeSession.id);
         }
       }
 
-      if (episode) {
-        this.addMediaToUserSession(user, 'episodes', episode);
-        this.allActiveSessions.episodes.set(episode.id, episode);
+      // Create or update current session
+      if (!session) {
+        session = await this.userMediaSessionRepository.create({
+          userId,
+          mediaType: 'episode',
+          mediaId: episode.id,
+          episode,
+          state: 'playing',
+          startTime: now,
+          player: payload.Player?.title,
+        });
+      } else {
+        if (session.state === 'playing' && payload.event === 'media.scrobble') {
+          const sessionTime = now.getTime() - session.startTime.getTime();
+          await this.userMediaSessionRepository.update(session.id, {
+            timeWatchedMs: session.timeWatchedMs + sessionTime,
+            startTime: now,
+          });
+        }
+
+        await this.userMediaSessionRepository.update(session.id, {
+          state: 'playing',
+          player: payload.Player?.title,
+        });
+
+        session = await this.userMediaSessionRepository.findById(session.id);
       }
+
+      // Add to session maps
+      if (!this.userSessions.has(userId)) {
+        this.userSessions.set(userId, {
+          tracks: new Map<string, UserMediaSession>(),
+          movies: new Map<string, UserMediaSession>(),
+          episodes: new Map<string, UserMediaSession>(),
+        });
+      }
+
+      const userSession = this.userSessions.get(userId);
+      if (!userSession || !session) {
+        this.logger.warn(`User session not found for userId: ${userId}`);
+        return null;
+      }
+      userSession.episodes.set(session.id, session);
+      this.allActiveSessions.episodes.set(session.id, session);
     } else if (state === 'paused' || state === 'stopped') {
-      if (episode && state === 'paused') {
-        this.addMediaToUserSession(user, 'episodes', episode);
-        this.allActiveSessions.episodes.set(episode.id, episode);
-      } else if (episode) {
-        this.removeMediaFromUserSession(user, 'episodes', episode.id);
-        this.allActiveSessions.episodes.delete(episode.id);
+      if (session) {
+        const sessionTime = now.getTime() - session.startTime.getTime();
+
+        await this.userMediaSessionRepository.update(session.id, {
+          state,
+          endTime: now,
+          timeWatchedMs: session.timeWatchedMs + sessionTime,
+        });
+
+        session = await this.userMediaSessionRepository.findById(session.id);
+        if (!session) {
+          this.logger.warn(`Session not found`);
+          return null;
+        }
+
+        if (state === 'paused') {
+          const userSession = this.userSessions.get(userId);
+          if (userSession) {
+            userSession.episodes.set(session.id, session);
+          }
+          this.allActiveSessions.episodes.set(session.id, session);
+        } else {
+          const userSession = this.userSessions.get(userId);
+          if (userSession) {
+            userSession.episodes.delete(session.id);
+          }
+          this.allActiveSessions.episodes.delete(session.id);
+        }
       }
     }
 
-    const eventData = { ...episodeData, timestamp: now.toISOString() };
+    const eventData = {
+      type: 'episode',
+      episodeId: episode.id,
+      sessionId: session?.id,
+      title: episode.title,
+      showTitle: episode.showTitle,
+      season: episode.season,
+      episode: episode.episode,
+      state,
+      userId,
+      player: payload.Player?.title,
+      timestamp: now.toISOString(),
+    };
+
     this.eventEmitter.emit('plex.videoEvent', eventData);
 
-    return episode;
+    return { episode, session };
   }
 
-  public getCurrentMedia(type: string, user?: string): any {
-    if (user) {
-      const userSession = this.userSessions.get(user);
+  public async getCurrentMedia(type: string, userId?: string): Promise<any> {
+    if (userId) {
+      const userSession = this.userSessions.get(userId);
 
       if (!userSession) {
         return type === 'all' ? { tracks: [], movies: [], episodes: [] } : [];
       }
 
       if (type === 'track') {
-        return Array.from(userSession.tracks.values());
+        return Array.from(userSession.tracks.values()).map((session) => ({
+          ...session.track,
+          sessionId: session.id,
+          state: session.state,
+          player: session.player,
+          startTime: session.startTime,
+        }));
       } else if (type === 'movie') {
-        return Array.from(userSession.movies.values());
+        return Array.from(userSession.movies.values()).map((session) => ({
+          ...session.movie,
+          sessionId: session.id,
+          state: session.state,
+          player: session.player,
+          startTime: session.startTime,
+        }));
       } else if (type === 'episode') {
-        return Array.from(userSession.episodes.values());
+        return Array.from(userSession.episodes.values()).map((session) => ({
+          ...session.episode,
+          sessionId: session.id,
+          state: session.state,
+          player: session.player,
+          startTime: session.startTime,
+        }));
       } else if (type === 'all') {
         return {
-          tracks: Array.from(userSession.tracks.values()),
-          movies: Array.from(userSession.movies.values()),
-          episodes: Array.from(userSession.episodes.values()),
+          tracks: Array.from(userSession.tracks.values()).map((session) => ({
+            ...session.track,
+            sessionId: session.id,
+            state: session.state,
+            player: session.player,
+            startTime: session.startTime,
+          })),
+          movies: Array.from(userSession.movies.values()).map((session) => ({
+            ...session.movie,
+            sessionId: session.id,
+            state: session.state,
+            player: session.player,
+            startTime: session.startTime,
+          })),
+          episodes: Array.from(userSession.episodes.values()).map(
+            (session) => ({
+              ...session.episode,
+              sessionId: session.id,
+              state: session.state,
+              player: session.player,
+              startTime: session.startTime,
+            }),
+          ),
         };
       }
     } else {
       if (type === 'track') {
-        return Array.from(this.allActiveSessions.tracks.values());
+        return Array.from(this.allActiveSessions.tracks.values()).map(
+          (session) => ({
+            ...session.track,
+            sessionId: session.id,
+            state: session.state,
+            userId: session.userId,
+            player: session.player,
+            startTime: session.startTime,
+          }),
+        );
       } else if (type === 'movie') {
-        return Array.from(this.allActiveSessions.movies.values());
+        return Array.from(this.allActiveSessions.movies.values()).map(
+          (session) => ({
+            ...session.movie,
+            sessionId: session.id,
+            state: session.state,
+            userId: session.userId,
+            player: session.player,
+            startTime: session.startTime,
+          }),
+        );
       } else if (type === 'episode') {
-        return Array.from(this.allActiveSessions.episodes.values());
+        return Array.from(this.allActiveSessions.episodes.values()).map(
+          (session) => ({
+            ...session.episode,
+            sessionId: session.id,
+            state: session.state,
+            userId: session.userId,
+            player: session.player,
+            startTime: session.startTime,
+          }),
+        );
       } else if (type === 'all') {
         return {
-          tracks: Array.from(this.allActiveSessions.tracks.values()),
-          movies: Array.from(this.allActiveSessions.movies.values()),
-          episodes: Array.from(this.allActiveSessions.episodes.values()),
+          tracks: Array.from(this.allActiveSessions.tracks.values()).map(
+            (session) => ({
+              ...session.track,
+              sessionId: session.id,
+              state: session.state,
+              userId: session.userId,
+              player: session.player,
+              startTime: session.startTime,
+            }),
+          ),
+          movies: Array.from(this.allActiveSessions.movies.values()).map(
+            (session) => ({
+              ...session.movie,
+              sessionId: session.id,
+              state: session.state,
+              userId: session.userId,
+              player: session.player,
+              startTime: session.startTime,
+            }),
+          ),
+          episodes: Array.from(this.allActiveSessions.episodes.values()).map(
+            (session) => ({
+              ...session.episode,
+              sessionId: session.id,
+              state: session.state,
+              userId: session.userId,
+              player: session.player,
+              startTime: session.startTime,
+            }),
+          ),
         };
       }
     }

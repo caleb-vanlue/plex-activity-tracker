@@ -8,7 +8,4 @@ export class Track extends BaseMediaEntity {
 
   @Column()
   album: string;
-
-  @Column({ nullable: true, type: 'int' })
-  listenedMs: number;
 }

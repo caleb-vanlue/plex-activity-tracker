@@ -16,6 +16,14 @@ import { MediaEventService } from './media/media-event.service';
 import { ThumbnailModule } from './thumbnail/thumbnail.module';
 import { HttpModule } from '@nestjs/axios';
 import { PlexController } from './plex/plex.controller';
+import { User } from './media/entities/user.entity';
+import { UserMediaSession } from './media/entities/user-media-session.entity';
+import { CombinedStatsRepository } from './media/repositories/combined-stats.repository';
+import { EpisodeStatsRepository } from './media/repositories/episode-stats.repository';
+import { MovieStatsRepository } from './media/repositories/movie-stats.repository';
+import { TrackStatsRepository } from './media/repositories/track-stats.repository';
+import { UserMediaSessionRepository } from './media/repositories/user-media-session.repository';
+import { UserRepository } from './media/repositories/user.repository';
 
 @Module({
   imports: [
@@ -29,7 +37,7 @@ import { PlexController } from './plex/plex.controller';
         return getDataSourceOptions();
       },
     }),
-    TypeOrmModule.forFeature([Track, Movie, Episode]),
+    TypeOrmModule.forFeature([Track, Movie, Episode, User, UserMediaSession]),
     EventEmitterModule.forRoot(),
     ThumbnailModule,
     HttpModule,
@@ -42,6 +50,12 @@ import { PlexController } from './plex/plex.controller';
     EpisodeRepository,
     MediaService,
     MediaEventService,
+    TrackStatsRepository,
+    MovieStatsRepository,
+    EpisodeStatsRepository,
+    CombinedStatsRepository,
+    UserMediaSessionRepository,
+    UserRepository,
   ],
 })
 export class AppModule {}

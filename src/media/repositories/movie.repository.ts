@@ -16,7 +16,7 @@ export class MovieRepository extends BaseMediaRepository<Movie> {
   async findByDirector(director: string, limit: number = 10): Promise<Movie[]> {
     return this.repository.find({
       where: { director },
-      order: { startTime: 'DESC' },
+      order: { createdAt: 'DESC' }, // Changed from startTime to createdAt
       take: limit,
     });
   }
@@ -24,7 +24,7 @@ export class MovieRepository extends BaseMediaRepository<Movie> {
   async findByStudio(studio: string, limit: number = 10): Promise<Movie[]> {
     return this.repository.find({
       where: { studio },
-      order: { startTime: 'DESC' },
+      order: { createdAt: 'DESC' }, // Changed from startTime to createdAt
       take: limit,
     });
   }
@@ -34,11 +34,18 @@ export class MovieRepository extends BaseMediaRepository<Movie> {
     user: string,
     limit: number = 10,
   ): Promise<Movie[]> {
-    return this.repository.find({
-      where: { director, user },
-      order: { startTime: 'DESC' },
-      take: limit,
-    });
+    // Since user is now handled by UserMediaSession, we need to use a query instead
+    const query = `
+      SELECT DISTINCT ON (movie.id) 
+        movie.*
+      FROM movies movie
+      JOIN user_media_sessions session ON session."mediaId" = movie.id AND session."mediaType" = 'movie'
+      WHERE movie.director = $1 AND session."userId" = $2
+      ORDER BY movie.id, session."startTime" DESC
+      LIMIT $3
+    `;
+
+    return this.query(query, [director, user, limit]);
   }
 
   async findByStudioAndUser(
@@ -46,39 +53,51 @@ export class MovieRepository extends BaseMediaRepository<Movie> {
     user: string,
     limit: number = 10,
   ): Promise<Movie[]> {
-    return this.repository.find({
-      where: { studio, user },
-      order: { startTime: 'DESC' },
-      take: limit,
-    });
+    // Since user is now handled by UserMediaSession, we need to use a query instead
+    const query = `
+      SELECT DISTINCT ON (movie.id) 
+        movie.*
+      FROM movies movie
+      JOIN user_media_sessions session ON session."mediaId" = movie.id AND session."mediaType" = 'movie'
+      WHERE movie.studio = $1 AND session."userId" = $2
+      ORDER BY movie.id, session."startTime" DESC
+      LIMIT $3
+    `;
+
+    return this.query(query, [studio, user, limit]);
   }
 
   async getWatchingStats(
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
   ): Promise<any> {
-    const timeCondition = this.getTimeframeCondition(timeframe, 'startTime');
+    // This method should now delegate to MovieStatsRepository
+    // For backward compatibility, we'll leave a simplified version
+    const timeframeCondition = this.getTimeframeCondition(
+      timeframe,
+      'session."startTime"',
+    );
 
     const statsQuery = `
       SELECT 
-        COUNT(*) as "totalMovies",
-        COUNT(DISTINCT "director") as "uniqueDirectors",
-        COUNT(DISTINCT "studio") as "uniqueStudios",
-        SUM("watchedMs") as "totalWatchedMs"
-      FROM movies
-      WHERE "watchedMs" IS NOT NULL
-      ${timeCondition}
+        COUNT(DISTINCT movie.id) as "totalMovies",
+        COUNT(DISTINCT movie.director) as "uniqueDirectors",
+        COUNT(DISTINCT movie.studio) as "uniqueStudios",
+        SUM(session."timeWatchedMs") as "totalWatchedMs"
+      FROM movies movie
+      JOIN user_media_sessions session ON session."mediaId" = movie.id AND session."mediaType" = 'movie'
+      WHERE 1=1 ${timeframeCondition}
     `;
 
     const mostWatchedQuery = `
       SELECT 
-        "title",
-        "year",
-        "director",
-        "watchedMs",
-        "percentComplete"
-      FROM movies
-      WHERE "watchedMs" IS NOT NULL
-      ${timeCondition}
+        movie.title,
+        movie.year,
+        movie.director,
+        SUM(session."timeWatchedMs") as "watchedMs"
+      FROM movies movie
+      JOIN user_media_sessions session ON session."mediaId" = movie.id AND session."mediaType" = 'movie'
+      WHERE 1=1 ${timeframeCondition}
+      GROUP BY movie.id, movie.title, movie.year, movie.director
       ORDER BY "watchedMs" DESC
       LIMIT 5
     `;
@@ -98,39 +117,39 @@ export class MovieRepository extends BaseMediaRepository<Movie> {
     user: string,
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
   ): Promise<any> {
-    const timeCondition = this.getTimeframeCondition(timeframe, 'startTime');
-    const userCondition = this.getUserCondition(user);
+    const timeframeCondition = this.getTimeframeCondition(
+      timeframe,
+      'session."startTime"',
+    );
 
     const statsQuery = `
       SELECT 
-        COUNT(*) as "totalMovies",
-        COUNT(DISTINCT "director") as "uniqueDirectors",
-        COUNT(DISTINCT "studio") as "uniqueStudios",
-        SUM("watchedMs") as "totalWatchedMs"
-      FROM movies
-      WHERE "watchedMs" IS NOT NULL
-      ${timeCondition}
-      ${userCondition}
+        COUNT(DISTINCT movie.id) as "totalMovies",
+        COUNT(DISTINCT movie.director) as "uniqueDirectors",
+        COUNT(DISTINCT movie.studio) as "uniqueStudios",
+        SUM(session."timeWatchedMs") as "totalWatchedMs"
+      FROM movies movie
+      JOIN user_media_sessions session ON session."mediaId" = movie.id AND session."mediaType" = 'movie'
+      WHERE session."userId" = $1 ${timeframeCondition}
     `;
 
     const mostWatchedQuery = `
       SELECT 
-        "title",
-        "year",
-        "director",
-        "watchedMs",
-        "percentComplete"
-      FROM movies
-      WHERE "watchedMs" IS NOT NULL
-      ${timeCondition}
-      ${userCondition}
+        movie.title,
+        movie.year,
+        movie.director,
+        SUM(session."timeWatchedMs") as "watchedMs"
+      FROM movies movie
+      JOIN user_media_sessions session ON session."mediaId" = movie.id AND session."mediaType" = 'movie'
+      WHERE session."userId" = $1 ${timeframeCondition}
+      GROUP BY movie.id, movie.title, movie.year, movie.director
       ORDER BY "watchedMs" DESC
       LIMIT 5
     `;
 
     const [stats, mostWatched] = await Promise.all([
-      this.query(statsQuery),
-      this.query(mostWatchedQuery),
+      this.query(statsQuery, [user]),
+      this.query(mostWatchedQuery, [user]),
     ]);
 
     return {
@@ -143,17 +162,20 @@ export class MovieRepository extends BaseMediaRepository<Movie> {
   async getTopDirectors(
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
   ): Promise<any> {
-    const timeCondition = this.getTimeframeCondition(timeframe, 'startTime');
+    const timeframeCondition = this.getTimeframeCondition(
+      timeframe,
+      'session."startTime"',
+    );
 
     const query = `
       SELECT 
-        "director",
-        COUNT(*) as "movieCount",
-        SUM("watchedMs") as "watchedMs"
-      FROM movies
-      WHERE "director" IS NOT NULL AND "watchedMs" IS NOT NULL
-      ${timeCondition}
-      GROUP BY "director"
+        movie.director,
+        COUNT(DISTINCT movie.id) as "movieCount",
+        SUM(session."timeWatchedMs") as "watchedMs"
+      FROM movies movie
+      JOIN user_media_sessions session ON session."mediaId" = movie.id AND session."mediaType" = 'movie'
+      WHERE movie.director IS NOT NULL ${timeframeCondition}
+      GROUP BY movie.director
       ORDER BY "watchedMs" DESC
       LIMIT 10
     `;
@@ -165,23 +187,24 @@ export class MovieRepository extends BaseMediaRepository<Movie> {
     user: string,
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
   ): Promise<any> {
-    const timeCondition = this.getTimeframeCondition(timeframe, 'startTime');
-    const userCondition = this.getUserCondition(user);
+    const timeframeCondition = this.getTimeframeCondition(
+      timeframe,
+      'session."startTime"',
+    );
 
     const query = `
       SELECT 
-        "director",
-        COUNT(*) as "movieCount",
-        SUM("watchedMs") as "watchedMs"
-      FROM movies
-      WHERE "director" IS NOT NULL AND "watchedMs" IS NOT NULL
-      ${timeCondition}
-      ${userCondition}
-      GROUP BY "director"
+        movie.director,
+        COUNT(DISTINCT movie.id) as "movieCount",
+        SUM(session."timeWatchedMs") as "watchedMs"
+      FROM movies movie
+      JOIN user_media_sessions session ON session."mediaId" = movie.id AND session."mediaType" = 'movie'
+      WHERE movie.director IS NOT NULL AND session."userId" = $1 ${timeframeCondition}
+      GROUP BY movie.director
       ORDER BY "watchedMs" DESC
       LIMIT 10
     `;
 
-    return this.query(query);
+    return this.query(query, [user]);
   }
 }

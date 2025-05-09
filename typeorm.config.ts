@@ -3,6 +3,8 @@ import * as dotenv from 'dotenv';
 import { Track } from 'src/media/entities/track.entity';
 import { Episode } from 'src/media/entities/episode.entity';
 import { Movie } from 'src/media/entities/movie.entity';
+import { User } from 'src/media/entities/user.entity';
+import { UserMediaSession } from 'src/media/entities/user-media-session.entity';
 
 dotenv.config();
 
@@ -13,7 +15,7 @@ export const getDataSourceOptions = (): DataSourceOptions => ({
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_DATABASE || 'plex',
-  entities: [Track, Episode, Movie],
+  entities: [Track, Episode, Movie, User, UserMediaSession],
   migrations: ['dist/migrations/*.js'],
 });
 

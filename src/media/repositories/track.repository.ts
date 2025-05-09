@@ -16,7 +16,7 @@ export class TrackRepository extends BaseMediaRepository<Track> {
   async findByArtist(artist: string, limit: number = 10): Promise<Track[]> {
     return this.repository.find({
       where: { artist },
-      order: { startTime: 'DESC' },
+      order: { createdAt: 'DESC' }, // Changed from startTime to createdAt
       take: limit,
     });
   }
@@ -24,7 +24,7 @@ export class TrackRepository extends BaseMediaRepository<Track> {
   async findByAlbum(album: string, limit: number = 10): Promise<Track[]> {
     return this.repository.find({
       where: { album },
-      order: { startTime: 'DESC' },
+      order: { createdAt: 'DESC' }, // Changed from startTime to createdAt
       take: limit,
     });
   }
@@ -34,11 +34,18 @@ export class TrackRepository extends BaseMediaRepository<Track> {
     user: string,
     limit: number = 10,
   ): Promise<Track[]> {
-    return this.repository.find({
-      where: { artist, user },
-      order: { startTime: 'DESC' },
-      take: limit,
-    });
+    // Since user is now handled by UserMediaSession, we need to use a query instead
+    const query = `
+      SELECT DISTINCT ON (track.id) 
+        track.*
+      FROM tracks track
+      JOIN user_media_sessions session ON session."mediaId" = track.id AND session."mediaType" = 'track'
+      WHERE track.artist = $1 AND session."userId" = $2
+      ORDER BY track.id, session."startTime" DESC
+      LIMIT $3
+    `;
+
+    return this.query(query, [artist, user, limit]);
   }
 
   async findByAlbumAndUser(
@@ -46,44 +53,56 @@ export class TrackRepository extends BaseMediaRepository<Track> {
     user: string,
     limit: number = 10,
   ): Promise<Track[]> {
-    return this.repository.find({
-      where: { album, user },
-      order: { startTime: 'DESC' },
-      take: limit,
-    });
+    // Since user is now handled by UserMediaSession, we need to use a query instead
+    const query = `
+      SELECT DISTINCT ON (track.id) 
+        track.*
+      FROM tracks track
+      JOIN user_media_sessions session ON session."mediaId" = track.id AND session."mediaType" = 'track'
+      WHERE track.album = $1 AND session."userId" = $2
+      ORDER BY track.id, session."startTime" DESC
+      LIMIT $3
+    `;
+
+    return this.query(query, [album, user, limit]);
   }
 
   async getListeningStats(
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
   ): Promise<any> {
-    const timeCondition = this.getTimeframeCondition(timeframe, 'startTime');
+    // This method should now delegate to TrackStatsRepository
+    // For backward compatibility, we'll leave a simplified version
+    const timeframeCondition = this.getTimeframeCondition(
+      timeframe,
+      'session."startTime"',
+    );
 
-    const statsQuery = `
+    const query = `
       SELECT 
-        COUNT(*) as "totalTracks",
-        COUNT(DISTINCT "artist") as "uniqueArtists",
-        COUNT(DISTINCT "album") as "uniqueAlbums",
-        SUM("listenedMs") as "totalListenedMs"
-      FROM tracks
-      WHERE "listenedMs" IS NOT NULL
-      ${timeCondition}
+        COUNT(DISTINCT track.id) as "totalTracks",
+        COUNT(DISTINCT track.artist) as "uniqueArtists",
+        COUNT(DISTINCT track.album) as "uniqueAlbums",
+        SUM(session."timeWatchedMs") as "totalListenedMs"
+      FROM tracks track
+      JOIN user_media_sessions session ON session."mediaId" = track.id AND session."mediaType" = 'track'
+      WHERE 1=1 ${timeframeCondition}
     `;
 
     const topArtistsQuery = `
       SELECT 
-        "artist",
-        COUNT(*) as "trackCount",
-        SUM("listenedMs") as "listenedMs"
-      FROM tracks
-      WHERE "listenedMs" IS NOT NULL
-      ${timeCondition}
-      GROUP BY "artist"
+        track.artist,
+        COUNT(DISTINCT track.id) as "trackCount",
+        SUM(session."timeWatchedMs") as "listenedMs"
+      FROM tracks track
+      JOIN user_media_sessions session ON session."mediaId" = track.id AND session."mediaType" = 'track'
+      WHERE 1=1 ${timeframeCondition}
+      GROUP BY track.artist
       ORDER BY "listenedMs" DESC
       LIMIT 5
     `;
 
     const [stats, topArtists] = await Promise.all([
-      this.query(statsQuery),
+      this.query(query),
       this.query(topArtistsQuery),
     ]);
 
@@ -97,38 +116,40 @@ export class TrackRepository extends BaseMediaRepository<Track> {
     user: string,
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
   ): Promise<any> {
-    const timeCondition = this.getTimeframeCondition(timeframe, 'startTime');
-    const userCondition = this.getUserCondition(user);
+    // This method should now delegate to TrackStatsRepository
+    // For backward compatibility, we'll leave a simplified version
+    const timeframeCondition = this.getTimeframeCondition(
+      timeframe,
+      'session."startTime"',
+    );
 
-    const statsQuery = `
+    const query = `
       SELECT 
-        COUNT(*) as "totalTracks",
-        COUNT(DISTINCT "artist") as "uniqueArtists",
-        COUNT(DISTINCT "album") as "uniqueAlbums",
-        SUM("listenedMs") as "totalListenedMs"
-      FROM tracks
-      WHERE "listenedMs" IS NOT NULL
-      ${timeCondition}
-      ${userCondition}
+        COUNT(DISTINCT track.id) as "totalTracks",
+        COUNT(DISTINCT track.artist) as "uniqueArtists",
+        COUNT(DISTINCT track.album) as "uniqueAlbums",
+        SUM(session."timeWatchedMs") as "totalListenedMs"
+      FROM tracks track
+      JOIN user_media_sessions session ON session."mediaId" = track.id AND session."mediaType" = 'track'
+      WHERE session."userId" = $1 ${timeframeCondition}
     `;
 
     const topArtistsQuery = `
       SELECT 
-        "artist",
-        COUNT(*) as "trackCount",
-        SUM("listenedMs") as "listenedMs"
-      FROM tracks
-      WHERE "listenedMs" IS NOT NULL
-      ${timeCondition}
-      ${userCondition}
-      GROUP BY "artist"
+        track.artist,
+        COUNT(DISTINCT track.id) as "trackCount",
+        SUM(session."timeWatchedMs") as "listenedMs"
+      FROM tracks track
+      JOIN user_media_sessions session ON session."mediaId" = track.id AND session."mediaType" = 'track'
+      WHERE session."userId" = $1 ${timeframeCondition}
+      GROUP BY track.artist
       ORDER BY "listenedMs" DESC
       LIMIT 5
     `;
 
     const [stats, topArtists] = await Promise.all([
-      this.query(statsQuery),
-      this.query(topArtistsQuery),
+      this.query(query, [user]),
+      this.query(topArtistsQuery, [user]),
     ]);
 
     return {
@@ -141,18 +162,21 @@ export class TrackRepository extends BaseMediaRepository<Track> {
   async getTopAlbums(
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
   ): Promise<any> {
-    const timeCondition = this.getTimeframeCondition(timeframe, 'startTime');
+    const timeframeCondition = this.getTimeframeCondition(
+      timeframe,
+      'session."startTime"',
+    );
 
     const query = `
       SELECT 
-        "album",
-        "artist",
-        COUNT(*) as "trackCount",
-        SUM("listenedMs") as "listenedMs"
-      FROM tracks
-      WHERE "listenedMs" IS NOT NULL
-      ${timeCondition}
-      GROUP BY "album", "artist"
+        track.album,
+        track.artist,
+        COUNT(DISTINCT track.id) as "trackCount",
+        SUM(session."timeWatchedMs") as "listenedMs"
+      FROM tracks track
+      JOIN user_media_sessions session ON session."mediaId" = track.id AND session."mediaType" = 'track'
+      WHERE 1=1 ${timeframeCondition}
+      GROUP BY track.album, track.artist
       ORDER BY "listenedMs" DESC
       LIMIT 10
     `;
@@ -164,24 +188,25 @@ export class TrackRepository extends BaseMediaRepository<Track> {
     user: string,
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
   ): Promise<any> {
-    const timeCondition = this.getTimeframeCondition(timeframe, 'startTime');
-    const userCondition = this.getUserCondition(user);
+    const timeframeCondition = this.getTimeframeCondition(
+      timeframe,
+      'session."startTime"',
+    );
 
     const query = `
       SELECT 
-        "album",
-        "artist",
-        COUNT(*) as "trackCount",
-        SUM("listenedMs") as "listenedMs"
-      FROM tracks
-      WHERE "listenedMs" IS NOT NULL
-      ${timeCondition}
-      ${userCondition}
-      GROUP BY "album", "artist"
+        track.album,
+        track.artist,
+        COUNT(DISTINCT track.id) as "trackCount",
+        SUM(session."timeWatchedMs") as "listenedMs"
+      FROM tracks track
+      JOIN user_media_sessions session ON session."mediaId" = track.id AND session."mediaType" = 'track'
+      WHERE session."userId" = $1 ${timeframeCondition}
+      GROUP BY track.album, track.artist
       ORDER BY "listenedMs" DESC
       LIMIT 10
     `;
 
-    return this.query(query);
+    return this.query(query, [user]);
   }
 }

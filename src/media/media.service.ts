@@ -1,8 +1,15 @@
+// src/media/media.service.ts
 import { Injectable } from '@nestjs/common';
 import { TrackRepository } from './repositories/track.repository';
 import { MovieRepository } from './repositories/movie.repository';
 import { EpisodeRepository } from './repositories/episode.repository';
+import { TrackStatsRepository } from './repositories/track-stats.repository';
+import { MovieStatsRepository } from './repositories/movie-stats.repository';
+import { EpisodeStatsRepository } from './repositories/episode-stats.repository';
+import { CombinedStatsRepository } from './repositories/combined-stats.repository';
+import { UserMediaSessionRepository } from './repositories/user-media-session.repository';
 import { MediaEventService } from './media-event.service';
+import { UserRepository } from './repositories/user.repository';
 
 @Injectable()
 export class MediaService {
@@ -10,6 +17,12 @@ export class MediaService {
     private trackRepository: TrackRepository,
     private movieRepository: MovieRepository,
     private episodeRepository: EpisodeRepository,
+    private trackStatsRepository: TrackStatsRepository,
+    private movieStatsRepository: MovieStatsRepository,
+    private episodeStatsRepository: EpisodeStatsRepository,
+    private combinedStatsRepository: CombinedStatsRepository,
+    private userMediaSessionRepository: UserMediaSessionRepository,
+    private userRepository: UserRepository,
     private mediaEventService: MediaEventService,
   ) {}
 
@@ -19,6 +32,12 @@ export class MediaService {
 
   async getActiveUsers(): Promise<string[]> {
     return this.mediaEventService.getActiveUsers();
+  }
+
+  async getActiveUsersDetails(
+    timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+  ): Promise<any[]> {
+    return this.combinedStatsRepository.getActiveUsersStats(timeframe);
   }
 
   async getMediaById(type: string, id: string): Promise<any> {
@@ -34,10 +53,42 @@ export class MediaService {
     }
   }
 
+  async getMediaSessionById(id: string): Promise<any> {
+    return this.userMediaSessionRepository.findById(id);
+  }
+
   async getRecentTracks(limit: number = 10, user?: string): Promise<any[]> {
-    return user
-      ? this.trackRepository.findByUser(user, limit)
-      : this.trackRepository.findRecent(limit);
+    if (user) {
+      const sessions = await this.userMediaSessionRepository.findRecentSessions(
+        'track',
+        limit,
+        user,
+      );
+
+      return sessions.map((session) => ({
+        ...session.track,
+        sessionId: session.id,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        state: session.state,
+        timeWatchedMs: session.timeWatchedMs,
+      }));
+    } else {
+      const sessions = await this.userMediaSessionRepository.findRecentSessions(
+        'track',
+        limit,
+      );
+
+      return sessions.map((session) => ({
+        ...session.track,
+        sessionId: session.id,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        state: session.state,
+        timeWatchedMs: session.timeWatchedMs,
+        userId: session.userId,
+      }));
+    }
   }
 
   async getTracksByArtist(
@@ -46,8 +97,8 @@ export class MediaService {
     user?: string,
   ): Promise<any[]> {
     return user
-      ? this.trackRepository.findByArtistAndUser(artist, user, limit)
-      : this.trackRepository.findByArtist(artist, limit);
+      ? this.trackStatsRepository.findByArtistAndUser(artist, user, limit)
+      : this.trackStatsRepository.findByArtist(artist, limit);
   }
 
   async getTracksByAlbum(
@@ -56,8 +107,8 @@ export class MediaService {
     user?: string,
   ): Promise<any[]> {
     return user
-      ? this.trackRepository.findByAlbumAndUser(album, user, limit)
-      : this.trackRepository.findByAlbum(album, limit);
+      ? this.trackStatsRepository.findByAlbumAndUser(album, user, limit)
+      : this.trackStatsRepository.findByAlbum(album, limit);
   }
 
   async getTracksByState(
@@ -65,9 +116,30 @@ export class MediaService {
     limit: number = 10,
     user?: string,
   ): Promise<any[]> {
-    return user
-      ? this.trackRepository.findByStateAndUser(state, user, limit)
-      : this.trackRepository.findByState(state, limit);
+    const query = this.userMediaSessionRepository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.track', 'track')
+      .where('session.mediaType = :mediaType', { mediaType: 'track' })
+      .andWhere('session.state = :state', { state });
+
+    if (user) {
+      query.andWhere('session.userId = :userId', { userId: user });
+    }
+
+    const sessions = await query
+      .orderBy('session.startTime', 'DESC')
+      .take(limit)
+      .getMany();
+
+    return sessions.map((session) => ({
+      ...session.track,
+      sessionId: session.id,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      state: session.state,
+      timeWatchedMs: session.timeWatchedMs,
+      userId: user ? undefined : session.userId,
+    }));
   }
 
   async getListeningStats(
@@ -75,23 +147,60 @@ export class MediaService {
     user?: string,
   ): Promise<any> {
     return user
-      ? this.trackRepository.getUserListeningStats(user, timeframe)
-      : this.trackRepository.getListeningStats(timeframe);
+      ? this.trackStatsRepository.getUserListeningStats(user, timeframe)
+      : this.trackStatsRepository.getListeningStats(timeframe);
+  }
+
+  async getTopArtists(
+    timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    user?: string,
+  ): Promise<any[]> {
+    return user
+      ? this.trackStatsRepository.getUserTopArtists(user, timeframe)
+      : this.trackStatsRepository.getTopArtists(timeframe);
   }
 
   async getTopAlbums(
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
     user?: string,
-  ): Promise<any> {
+  ): Promise<any[]> {
     return user
-      ? this.trackRepository.getUserTopAlbums(user, timeframe)
-      : this.trackRepository.getTopAlbums(timeframe);
+      ? this.trackStatsRepository.getUserTopAlbums(user, timeframe)
+      : this.trackStatsRepository.getTopAlbums(timeframe);
   }
 
   async getRecentMovies(limit: number = 10, user?: string): Promise<any[]> {
-    return user
-      ? this.movieRepository.findByUser(user, limit)
-      : this.movieRepository.findRecent(limit);
+    if (user) {
+      const sessions = await this.userMediaSessionRepository.findRecentSessions(
+        'movie',
+        limit,
+        user,
+      );
+
+      return sessions.map((session) => ({
+        ...session.movie,
+        sessionId: session.id,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        state: session.state,
+        timeWatchedMs: session.timeWatchedMs,
+      }));
+    } else {
+      const sessions = await this.userMediaSessionRepository.findRecentSessions(
+        'movie',
+        limit,
+      );
+
+      return sessions.map((session) => ({
+        ...session.movie,
+        sessionId: session.id,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        state: session.state,
+        timeWatchedMs: session.timeWatchedMs,
+        userId: session.userId,
+      }));
+    }
   }
 
   async getMoviesByDirector(
@@ -100,8 +209,8 @@ export class MediaService {
     user?: string,
   ): Promise<any[]> {
     return user
-      ? this.movieRepository.findByDirectorAndUser(director, user, limit)
-      : this.movieRepository.findByDirector(director, limit);
+      ? this.movieStatsRepository.findByDirectorAndUser(director, user, limit)
+      : this.movieStatsRepository.findByDirector(director, limit);
   }
 
   async getMoviesByStudio(
@@ -110,8 +219,8 @@ export class MediaService {
     user?: string,
   ): Promise<any[]> {
     return user
-      ? this.movieRepository.findByStudioAndUser(studio, user, limit)
-      : this.movieRepository.findByStudio(studio, limit);
+      ? this.movieStatsRepository.findByStudioAndUser(studio, user, limit)
+      : this.movieStatsRepository.findByStudio(studio, limit);
   }
 
   async getMoviesByState(
@@ -119,9 +228,30 @@ export class MediaService {
     limit: number = 10,
     user?: string,
   ): Promise<any[]> {
-    return user
-      ? this.movieRepository.findByStateAndUser(state, user, limit)
-      : this.movieRepository.findByState(state, limit);
+    const query = this.userMediaSessionRepository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.movie', 'movie')
+      .where('session.mediaType = :mediaType', { mediaType: 'movie' })
+      .andWhere('session.state = :state', { state });
+
+    if (user) {
+      query.andWhere('session.userId = :userId', { userId: user });
+    }
+
+    const sessions = await query
+      .orderBy('session.startTime', 'DESC')
+      .take(limit)
+      .getMany();
+
+    return sessions.map((session) => ({
+      ...session.movie,
+      sessionId: session.id,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      state: session.state,
+      timeWatchedMs: session.timeWatchedMs,
+      userId: user ? undefined : session.userId,
+    }));
   }
 
   async getMovieWatchingStats(
@@ -129,23 +259,51 @@ export class MediaService {
     user?: string,
   ): Promise<any> {
     return user
-      ? this.movieRepository.getUserWatchingStats(user, timeframe)
-      : this.movieRepository.getWatchingStats(timeframe);
+      ? this.movieStatsRepository.getUserWatchingStats(user, timeframe)
+      : this.movieStatsRepository.getWatchingStats(timeframe);
   }
 
   async getTopDirectors(
     timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
     user?: string,
-  ): Promise<any> {
+  ): Promise<any[]> {
     return user
-      ? this.movieRepository.getUserTopDirectors(user, timeframe)
-      : this.movieRepository.getTopDirectors(timeframe);
+      ? this.movieStatsRepository.getUserTopDirectors(user, timeframe)
+      : this.movieStatsRepository.getTopDirectors(timeframe);
   }
 
   async getRecentEpisodes(limit: number = 10, user?: string): Promise<any[]> {
-    return user
-      ? this.episodeRepository.findByUser(user, limit)
-      : this.episodeRepository.findRecent(limit);
+    if (user) {
+      const sessions = await this.userMediaSessionRepository.findRecentSessions(
+        'episode',
+        limit,
+        user,
+      );
+
+      return sessions.map((session) => ({
+        ...session.episode,
+        sessionId: session.id,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        state: session.state,
+        timeWatchedMs: session.timeWatchedMs,
+      }));
+    } else {
+      const sessions = await this.userMediaSessionRepository.findRecentSessions(
+        'episode',
+        limit,
+      );
+
+      return sessions.map((session) => ({
+        ...session.episode,
+        sessionId: session.id,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        state: session.state,
+        timeWatchedMs: session.timeWatchedMs,
+        userId: session.userId,
+      }));
+    }
   }
 
   async getEpisodesByShow(
@@ -154,8 +312,8 @@ export class MediaService {
     user?: string,
   ): Promise<any[]> {
     return user
-      ? this.episodeRepository.findByShowAndUser(showTitle, user, limit)
-      : this.episodeRepository.findByShow(showTitle, limit);
+      ? this.episodeStatsRepository.findByShowAndUser(showTitle, user, limit)
+      : this.episodeStatsRepository.findByShow(showTitle, limit);
   }
 
   async getEpisodesBySeason(
@@ -165,13 +323,13 @@ export class MediaService {
     user?: string,
   ): Promise<any[]> {
     return user
-      ? this.episodeRepository.findBySeasonAndUser(
+      ? this.episodeStatsRepository.findBySeasonAndUser(
           showTitle,
           season,
           user,
           limit,
         )
-      : this.episodeRepository.findBySeason(showTitle, season, limit);
+      : this.episodeStatsRepository.findBySeason(showTitle, season, limit);
   }
 
   async getEpisodesByState(
@@ -179,9 +337,30 @@ export class MediaService {
     limit: number = 10,
     user?: string,
   ): Promise<any[]> {
-    return user
-      ? this.episodeRepository.findByStateAndUser(state, user, limit)
-      : this.episodeRepository.findByState(state, limit);
+    const query = this.userMediaSessionRepository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.episode', 'episode')
+      .where('session.mediaType = :mediaType', { mediaType: 'episode' })
+      .andWhere('session.state = :state', { state });
+
+    if (user) {
+      query.andWhere('session.userId = :userId', { userId: user });
+    }
+
+    const sessions = await query
+      .orderBy('session.startTime', 'DESC')
+      .take(limit)
+      .getMany();
+
+    return sessions.map((session) => ({
+      ...session.episode,
+      sessionId: session.id,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      state: session.state,
+      timeWatchedMs: session.timeWatchedMs,
+      userId: user ? undefined : session.userId,
+    }));
   }
 
   async getTVWatchingStats(
@@ -189,14 +368,23 @@ export class MediaService {
     user?: string,
   ): Promise<any> {
     return user
-      ? this.episodeRepository.getUserWatchingStats(user, timeframe)
-      : this.episodeRepository.getWatchingStats(timeframe);
+      ? this.episodeStatsRepository.getUserWatchingStats(user, timeframe)
+      : this.episodeStatsRepository.getWatchingStats(timeframe);
+  }
+
+  async getTopShows(
+    timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+    user?: string,
+  ): Promise<any[]> {
+    return user
+      ? this.episodeStatsRepository.getUserTopShows(user, timeframe)
+      : this.episodeStatsRepository.getTopShows(timeframe);
   }
 
   async getShowsInProgress(user?: string): Promise<any> {
     return user
-      ? this.episodeRepository.getUserShowsInProgress(user)
-      : this.episodeRepository.getShowsInProgress();
+      ? this.episodeStatsRepository.getUserShowsInProgress(user)
+      : this.episodeStatsRepository.getShowsInProgress();
   }
 
   async getStats(
@@ -204,30 +392,92 @@ export class MediaService {
     user?: string,
   ): Promise<any> {
     if (user) {
-      const [musicStats, movieStats, tvStats] = await Promise.all([
-        this.getListeningStats(timeframe, user),
-        this.getMovieWatchingStats(timeframe, user),
-        this.getTVWatchingStats(timeframe, user),
-      ]);
-
-      return {
-        user,
-        music: musicStats,
-        movies: movieStats,
-        tv: tvStats,
-      };
+      return this.combinedStatsRepository.getUserStats(user, timeframe);
     } else {
-      const [musicStats, movieStats, tvStats] = await Promise.all([
-        this.getListeningStats(timeframe),
-        this.getMovieWatchingStats(timeframe),
-        this.getTVWatchingStats(timeframe),
-      ]);
+      return this.combinedStatsRepository.getOverallStats(timeframe);
+    }
+  }
+
+  async compareUsers(
+    userIds: string[],
+    timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+  ): Promise<any> {
+    return this.combinedStatsRepository.compareUsers(userIds, timeframe);
+  }
+
+  async getTrendingMedia(
+    timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
+  ): Promise<any> {
+    return this.combinedStatsRepository.getTrendingMedia(timeframe);
+  }
+
+  async getUserById(id: string): Promise<any> {
+    return this.userRepository.findById(id);
+  }
+
+  async getAllUsers(): Promise<any[]> {
+    return this.userRepository.findAll();
+  }
+
+  async getUserSessionsHistory(
+    userId: string,
+    mediaType?: string,
+    limit: number = 20,
+  ): Promise<any[]> {
+    const query = this.userMediaSessionRepository
+      .createQueryBuilder('session')
+      .where('session.userId = :userId', { userId });
+
+    if (mediaType && ['track', 'movie', 'episode'].includes(mediaType)) {
+      query.andWhere('session.mediaType = :mediaType', { mediaType });
+      query.leftJoinAndSelect(`session.${mediaType}`, mediaType);
+    } else {
+      query
+        .leftJoinAndSelect('session.track', 'track')
+        .leftJoinAndSelect('session.movie', 'movie')
+        .leftJoinAndSelect('session.episode', 'episode');
+    }
+
+    const sessions = await query
+      .orderBy('session.startTime', 'DESC')
+      .take(limit)
+      .getMany();
+
+    return sessions.map((session) => {
+      let mediaDetails = {};
+
+      if (session.mediaType === 'track' && session.track) {
+        mediaDetails = {
+          title: session.track.title,
+          artist: session.track.artist,
+          album: session.track.album,
+        };
+      } else if (session.mediaType === 'movie' && session.movie) {
+        mediaDetails = {
+          title: session.movie.title,
+          year: session.movie.year,
+          director: session.movie.director,
+        };
+      } else if (session.mediaType === 'episode' && session.episode) {
+        mediaDetails = {
+          title: session.episode.title,
+          showTitle: session.episode.showTitle,
+          season: session.episode.season,
+          episode: session.episode.episode,
+        };
+      }
 
       return {
-        music: musicStats,
-        movies: movieStats,
-        tv: tvStats,
+        id: session.id,
+        mediaId: session.mediaId,
+        mediaType: session.mediaType,
+        state: session.state,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        timeWatchedMs: session.timeWatchedMs,
+        player: session.player,
+        ...mediaDetails,
       };
-    }
+    });
   }
 }

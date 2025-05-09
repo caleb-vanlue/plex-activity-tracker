@@ -15,21 +15,6 @@ export abstract class BaseMediaEntity {
   @Column()
   title: string;
 
-  @Column()
-  state: string;
-
-  @Column({ nullable: true })
-  user: string;
-
-  @Column({ nullable: true })
-  player: string;
-
-  @Column({ nullable: true, type: 'timestamptz' })
-  startTime: Date;
-
-  @Column({ nullable: true, type: 'timestamptz' })
-  endTime?: Date;
-
   @Column({ nullable: true })
   thumbnailFileId: string;
 

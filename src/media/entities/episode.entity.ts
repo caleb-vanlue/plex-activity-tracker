@@ -17,10 +17,4 @@ export class Episode extends BaseMediaEntity {
 
   @Column({ nullable: true, type: 'text' })
   summary: string;
-
-  @Column({ nullable: true, type: 'int' })
-  watchedMs: number;
-
-  @Column({ nullable: true, type: 'float' })
-  percentComplete: number;
 }
