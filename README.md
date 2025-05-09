@@ -1,75 +1,162 @@
-## Description
+# Plexamp Activity Tracker
 
-A NestJS backend to store Plex watch data
+A NestJS-based API that tracks and provides insights into your Plex media consumption habits by processing Plex webhooks. This application captures detailed information about what you're watching and listening to, providing rich statistics and history for your music, movies, and TV shows.
 
-## Project setup
+## Features
 
-```bash
-$ npm install
+### Media Tracking
+
+- **Real-time tracking** of what you're currently playing across all media types
+- Captures detailed **playback statistics** including duration watched/listened
+- Tracks media state (playing, paused, stopped)
+- Handles all major media types:
+  - **Music**: Tracks, albums, and artists
+  - **Movies**: Titles, directors, studios
+  - **TV Shows**: Episodes, seasons, and series
+
+### Statistics and Insights
+
+- **Listening/viewing statistics** broken down by timeframe (day, week, month, all-time)
+- **Top content** reports:
+  - Most played artists and albums
+  - Most watched directors
+  - Shows in progress
+- Progress tracking for partial watches/listens
+
+### API Features
+
+- RESTful endpoints for all functionality
+- Comprehensive querying options for filtering content
+- Thumbnail storage and retrieval
+- Swagger documentation
+
+## API Endpoints
+
+### Current Media
+
+- `GET /media/current` - Get what's currently playing
+- `GET /webhooks/current` - Alternative endpoint for current media
+
+### Music
+
+- `GET /media/tracks` - Get recently played tracks with filtering options
+- `GET /media/tracks/:id` - Get a specific track by ID
+- `GET /media/music/stats` - Get music listening statistics
+- `GET /media/music/artists` - Get top artists
+- `GET /media/music/albums` - Get top albums
+
+### Movies
+
+- `GET /media/movies` - Get recently watched movies with filtering options
+- `GET /media/movies/:id` - Get a specific movie by ID
+- `GET /media/movies/stats` - Get movie watching statistics
+- `GET /media/movies/directors` - Get top directors
+
+### TV Shows
+
+- `GET /media/tv/episodes` - Get recently watched episodes with filtering options
+- `GET /media/tv/episodes/:id` - Get a specific episode by ID
+- `GET /media/tv/stats` - Get TV watching statistics
+- `GET /media/tv/shows` - Get shows in progress
+
+### Combined Stats
+
+- `GET /media/stats` - Get combined statistics for all media types
+- `GET /webhooks/stats` - Alternative endpoint for media stats
+
+### Webhooks
+
+- `POST /webhooks/plex` - Process Plex webhooks
+- `GET /webhooks/history` - Get media playback history
+
+## Setup
+
+This application depends on the [File Storage API](https://github.com/caleb-vanlue/file-storage) for storing and serving media thumbnails. Make sure to set up that application first or configure an alternative storage solution.
+
+### Prerequisites
+
+- Node.js (v16+)
+- PostgreSQL database
+- Plex Media Server with webhook capability
+- [File Storage API](https://github.com/caleb-vanlue/file-storage) for thumbnail storage
+
+### Environment Variables
+
+Create a `.env` file in the root directory with the following variables:
+
+```
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=your_password
+DB_DATABASE=plexamp_activity
+
+# File Storage API URL (see https://github.com/caleb-vanlue/file-storage)
+FILE_STORAGE_API_URL=http://localhost:3001
+
+# App Config
+PORT=3000
 ```
 
-## Compile and run the project
+### Installation
+
+1. Clone the repository
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+git clone https://github.com/caleb-vanlue/plex-activity-tracker.git
+cd plexamp-activity-tracker
 ```
 
-## Run tests
+2. Install dependencies
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm install
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+3. Run database migrations
 
 ```bash
-$ npm install -g mau
-$ mau deploy
+npm run migration:run
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+4. Start the application
 
-## Resources
+```bash
+# Development
+npm run start:dev
 
-Check out a few resources that may come in handy when working with NestJS:
+# Production
+npm run build
+npm run start:prod
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## Configuring Plex Webhooks
 
-## Support
+1. In Plex, go to Settings > Webhooks
+2. Add a new webhook with the URL to your application:
+   `http://plex-activity-tracker-api.url:3000/webhooks/plex`
+3. Ensure your Plex server can reach your application
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+## Development
 
-## Stay in touch
+### Available Scripts
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+- `npm run build` - Build the application
+- `npm run format` - Format code with Prettier
+- `npm run start:dev` - Start in development mode with hot reload
+- `npm run start:debug` - Start in debug mode
+- `npm run lint` - Lint code with ESLint
+- `npm run test` - Run unit tests
+- `npm run migration:generate` - Generate new database migrations
+- `npm run migration:run` - Run database migrations
+- `npm run migration:revert` - Revert last migration
 
-## License
+### Project Structure
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- `src/`
+  - `media/` - Media tracking and statistics modules
+  - `thumbnail/` - Thumbnail processing and storage
+  - `entities/` - Database entities (Track, Movie, Episode)
+  - `repositories/` - Data access layer
+  - `migrations/` - Database migrations
