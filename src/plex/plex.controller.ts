@@ -15,7 +15,9 @@ import { Response } from 'express';
 import { ThumbnailService } from '../thumbnail/thumbnail.service';
 import { MediaEventService } from '../media/media-event.service';
 import { MediaService } from '../media/media.service';
+import { ApiBody, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 
+@ApiTags('webhooks')
 @Controller('webhooks')
 export class PlexController {
   private readonly logger = new Logger(PlexController.name);
@@ -26,6 +28,11 @@ export class PlexController {
     private thumbnailService: ThumbnailService,
   ) {}
 
+  @ApiBody({
+    description: 'Plex webhook payload',
+    type: Object,
+    required: true,
+  })
   @Post('plex')
   @UseInterceptors(FileInterceptor('thumb'))
   async handlePlexWebhook(
@@ -71,6 +78,12 @@ export class PlexController {
     }
   }
 
+  @ApiParam({
+    name: 'id',
+    required: true,
+    type: String,
+    description: 'ID of the thumbnail to fetch',
+  })
   @Get('thumbnails/:id')
   async getThumbnail(@Param('id') id: string, @Res() res: Response) {
     try {
@@ -87,6 +100,12 @@ export class PlexController {
     }
   }
 
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    type: String,
+    description: 'Type of media to fetch (track, movie, episode, all)',
+  })
   @Get('current')
   async getCurrentMedia(@Query('type') type: string = 'all') {
     if (type !== 'all') {
@@ -96,6 +115,18 @@ export class PlexController {
     return this.mediaService.getCurrentMedia('all');
   }
 
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    type: String,
+    description: 'Type of media to fetch (track, movie, episode, all)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Number of items to return',
+  })
   @Get('history')
   async getHistory(
     @Query('type') type: string = 'all',
@@ -116,6 +147,18 @@ export class PlexController {
     }
   }
 
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    type: String,
+    description: 'Type of media to fetch (track, movie, episode, all)',
+  })
+  @ApiQuery({
+    name: 'timeframe',
+    required: false,
+    type: String,
+    description: 'Timeframe for stats (day, week, month, all)',
+  })
   @Get('stats')
   async getMediaStats(
     @Query('type') type: string = 'all',

@@ -7,18 +7,51 @@ import {
   Logger,
 } from '@nestjs/common';
 import { MediaService } from './media.service';
+import { ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 
+@ApiTags('media')
 @Controller('media')
 export class MediaController {
   private readonly logger = new Logger(MediaController.name);
 
   constructor(private mediaService: MediaService) {}
 
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    type: String,
+    description: 'Type of media to fetch (e.g., all, music, movies, tv)',
+  })
   @Get('current')
   async getCurrentMedia(@Query('type') type: string = 'all') {
     return this.mediaService.getCurrentMedia(type);
   }
 
+  @ApiQuery({
+    name: 'limit',
+    required: true,
+    type: Number,
+    default: 10,
+    description: 'Number of items to return',
+  })
+  @ApiQuery({
+    name: 'artist',
+    required: false,
+    type: String,
+    description: 'Filter by artist',
+  })
+  @ApiQuery({
+    name: 'album',
+    required: false,
+    type: String,
+    description: 'Filter by album',
+  })
+  @ApiQuery({
+    name: 'state',
+    required: false,
+    type: String,
+    description: 'Filter by state',
+  })
   @Get('tracks')
   async getTracks(
     @Query('limit') limit: number = 10,
@@ -45,6 +78,12 @@ export class MediaController {
     return this.mediaService.getRecentTracks(limit);
   }
 
+  @ApiParam({
+    name: 'id',
+    required: true,
+    type: String,
+    description: 'ID of the track to fetch',
+  })
   @Get('tracks/:id')
   async getTrackById(@Param('id') id: string) {
     const track = await this.mediaService.getMediaById('track', id);
@@ -54,6 +93,14 @@ export class MediaController {
     return track;
   }
 
+  @ApiQuery({
+    name: 'timeframe',
+    required: false,
+    type: String,
+    enum: ['day', 'week', 'month', 'all'],
+    default: 'all',
+    description: 'Timeframe for the stats',
+  })
   @Get('music/stats')
   async getMusicStats(
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
@@ -61,6 +108,14 @@ export class MediaController {
     return this.mediaService.getListeningStats(timeframe);
   }
 
+  @ApiQuery({
+    name: 'timeframe',
+    required: false,
+    type: String,
+    enum: ['day', 'week', 'month', 'all'],
+    default: 'all',
+    description: 'Timeframe for the stats',
+  })
   @Get('music/artists')
   async getTopArtists(
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
@@ -68,6 +123,14 @@ export class MediaController {
     return this.mediaService.getListeningStats(timeframe);
   }
 
+  @ApiQuery({
+    name: 'timeframe',
+    required: false,
+    type: String,
+    enum: ['day', 'week', 'month', 'all'],
+    default: 'all',
+    description: 'Timeframe for the stats',
+  })
   @Get('music/albums')
   async getTopAlbums(
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
@@ -75,6 +138,31 @@ export class MediaController {
     return this.mediaService.getTopAlbums(timeframe);
   }
 
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    default: 10,
+    description: 'Number of items to return',
+  })
+  @ApiQuery({
+    name: 'director',
+    required: false,
+    type: String,
+    description: 'Filter by director',
+  })
+  @ApiQuery({
+    name: 'studio',
+    required: false,
+    type: String,
+    description: 'Filter by studio',
+  })
+  @ApiQuery({
+    name: 'state',
+    required: false,
+    type: String,
+    description: 'Filter by state',
+  })
   @Get('movies')
   async getMovies(
     @Query('limit') limit: number = 10,
@@ -101,6 +189,12 @@ export class MediaController {
     return this.mediaService.getRecentMovies(limit);
   }
 
+  @ApiParam({
+    name: 'id',
+    required: true,
+    type: String,
+    description: 'ID of the movie to fetch',
+  })
   @Get('movies/:id')
   async getMovieById(@Param('id') id: string) {
     const movie = await this.mediaService.getMediaById('movie', id);
@@ -110,6 +204,14 @@ export class MediaController {
     return movie;
   }
 
+  @ApiQuery({
+    name: 'timeframe',
+    required: false,
+    type: String,
+    enum: ['day', 'week', 'month', 'all'],
+    default: 'all',
+    description: 'Timeframe for the stats',
+  })
   @Get('movies/stats')
   async getMovieStats(
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
@@ -117,6 +219,14 @@ export class MediaController {
     return this.mediaService.getMovieWatchingStats(timeframe);
   }
 
+  @ApiQuery({
+    name: 'timeframe',
+    required: false,
+    type: String,
+    enum: ['day', 'week', 'month', 'all'],
+    default: 'all',
+    description: 'Timeframe for the stats',
+  })
   @Get('movies/directors')
   async getTopDirectors(
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
@@ -124,6 +234,31 @@ export class MediaController {
     return this.mediaService.getTopDirectors(timeframe);
   }
 
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    default: 10,
+    description: 'Number of items to return',
+  })
+  @ApiQuery({
+    name: 'show',
+    required: false,
+    type: String,
+    description: 'Filter by show name',
+  })
+  @ApiQuery({
+    name: 'season',
+    required: false,
+    type: Number,
+    description: 'Filter by season number',
+  })
+  @ApiQuery({
+    name: 'state',
+    required: false,
+    type: String,
+    description: 'Filter by state',
+  })
   @Get('tv/episodes')
   async getEpisodes(
     @Query('limit') limit: number = 10,
@@ -150,6 +285,12 @@ export class MediaController {
     return this.mediaService.getRecentEpisodes(limit);
   }
 
+  @ApiParam({
+    name: 'id',
+    required: true,
+    type: String,
+    description: 'ID of the episode to fetch',
+  })
   @Get('tv/episodes/:id')
   async getEpisodeById(@Param('id') id: string) {
     const episode = await this.mediaService.getMediaById('episode', id);
@@ -159,6 +300,14 @@ export class MediaController {
     return episode;
   }
 
+  @ApiQuery({
+    name: 'timeframe',
+    required: false,
+    type: String,
+    enum: ['day', 'week', 'month', 'all'],
+    default: 'all',
+    description: 'Timeframe for the stats',
+  })
   @Get('tv/stats')
   async getTVStats(
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
@@ -171,6 +320,14 @@ export class MediaController {
     return this.mediaService.getShowsInProgress();
   }
 
+  @ApiQuery({
+    name: 'timeframe',
+    required: false,
+    type: String,
+    enum: ['day', 'week', 'month', 'all'],
+    default: 'all',
+    description: 'Timeframe for the stats',
+  })
   @Get('stats')
   async getAllStats(
     @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
