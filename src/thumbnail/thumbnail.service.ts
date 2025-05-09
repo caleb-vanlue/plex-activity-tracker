@@ -96,12 +96,6 @@ export class ThumbnailService {
     }
 
     try {
-      console.log({
-        type: metadata.type,
-        ratingKey: metadata.ratingKey,
-        parentRatingKey: metadata.parentRatingKey,
-        grandparentRatingKey: metadata.grandparentRatingKey,
-      });
       const existingThumbnailId = await this.findExistingThumbnail({
         type: metadata.type,
         ratingKey: metadata.ratingKey,
