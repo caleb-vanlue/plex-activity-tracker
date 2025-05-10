@@ -141,7 +141,10 @@ describe('PlexController', () => {
         mockTrackPayload,
         'album-thumbnail-id',
       );
-      expect(result).toEqual({ success: true });
+      expect(result).toEqual({
+        success: true,
+        result: mockTrack,
+      });
     });
 
     it('should process episode webhook with show metadata', async () => {
@@ -187,7 +190,10 @@ describe('PlexController', () => {
         mockEpisodePayload,
         'show-thumbnail-id',
       );
-      expect(result).toEqual({ success: true });
+      expect(result).toEqual({
+        success: true,
+        result: mockEpisode,
+      });
     });
 
     it('should process movie webhook', async () => {
@@ -230,7 +236,10 @@ describe('PlexController', () => {
         mockMoviePayload,
         'movie-thumbnail-id',
       );
-      expect(result).toEqual({ success: true });
+      expect(result).toEqual({
+        success: true,
+        result: mockMovie,
+      });
     });
 
     it('should handle webhook with no thumbnail', async () => {
@@ -256,7 +265,10 @@ describe('PlexController', () => {
         mockPayload,
         null,
       );
-      expect(result).toEqual({ success: true });
+      expect(result).toEqual({
+        success: true,
+        result: mockTrack,
+      });
     });
   });
 
@@ -320,67 +332,6 @@ describe('PlexController', () => {
       expect(mockResponse.send).toHaveBeenCalledWith({
         error: 'Failed to serve thumbnail',
       });
-    });
-  });
-
-  describe('getCurrentMedia', () => {
-    it('should return media for a specific type', async () => {
-      (mediaService.getCurrentMedia as jest.Mock).mockResolvedValue([
-        mockTrack,
-      ]);
-
-      const result = await controller.getCurrentMedia('track');
-
-      expect(mediaService.getCurrentMedia).toHaveBeenCalledWith(
-        'track',
-        undefined,
-      );
-      expect(result).toEqual([mockTrack]);
-    });
-
-    it('should return media for a specific type and user', async () => {
-      (mediaService.getCurrentMedia as jest.Mock).mockResolvedValue([
-        mockTrack,
-      ]);
-
-      const result = await controller.getCurrentMedia('track', 'TestUser');
-
-      expect(mediaService.getCurrentMedia).toHaveBeenCalledWith(
-        'track',
-        'TestUser',
-      );
-      expect(result).toEqual([mockTrack]);
-    });
-
-    it('should return all media types when type is "all"', async () => {
-      const allMedia = {
-        tracks: [mockTrack],
-        movies: [],
-        episodes: [],
-      };
-
-      (mediaService.getCurrentMedia as jest.Mock).mockResolvedValue(allMedia);
-
-      const result = await controller.getCurrentMedia('all');
-
-      expect(mediaService.getCurrentMedia).toHaveBeenCalledWith(
-        'all',
-        undefined,
-      );
-      expect(result).toEqual(allMedia);
-    });
-  });
-
-  describe('getActiveUsers', () => {
-    it('should return active users', async () => {
-      (mediaService.getActiveUsers as jest.Mock).mockResolvedValue(
-        mockActiveUsers,
-      );
-
-      const result = await controller.getActiveUsers();
-
-      expect(mediaService.getActiveUsers).toHaveBeenCalled();
-      expect(result).toEqual({ users: mockActiveUsers });
     });
   });
 
@@ -480,104 +431,6 @@ describe('PlexController', () => {
         movies: [mockMovie],
         episodes: [mockEpisode],
       });
-    });
-  });
-
-  describe('getMediaStats', () => {
-    it('should get track stats', async () => {
-      const trackStats = { totalListeningTimeMs: 3600000 };
-      (mediaService.getListeningStats as jest.Mock).mockResolvedValue(
-        trackStats,
-      );
-
-      const result = await controller.getMediaStats('track', 'week');
-
-      expect(mediaService.getListeningStats).toHaveBeenCalledWith(
-        'week',
-        undefined,
-      );
-      expect(result).toEqual(trackStats);
-    });
-
-    it('should get track stats for a specific user', async () => {
-      const trackStats = {
-        user: 'TestUser',
-        totalListeningTimeMs: 3600000,
-      };
-      (mediaService.getListeningStats as jest.Mock).mockResolvedValue(
-        trackStats,
-      );
-
-      const result = await controller.getMediaStats(
-        'track',
-        'week',
-        'TestUser',
-      );
-
-      expect(mediaService.getListeningStats).toHaveBeenCalledWith(
-        'week',
-        'TestUser',
-      );
-      expect(result).toEqual(trackStats);
-    });
-
-    it('should get movie stats', async () => {
-      const movieStats = { totalWatchTimeMs: 7200000 };
-      (mediaService.getMovieWatchingStats as jest.Mock).mockResolvedValue(
-        movieStats,
-      );
-
-      const result = await controller.getMediaStats('movie', 'week');
-
-      expect(mediaService.getMovieWatchingStats).toHaveBeenCalledWith(
-        'week',
-        undefined,
-      );
-      expect(result).toEqual(movieStats);
-    });
-
-    it('should get episode stats', async () => {
-      const tvStats = { totalWatchTimeMs: 10800000 };
-      (mediaService.getTVWatchingStats as jest.Mock).mockResolvedValue(tvStats);
-
-      const result = await controller.getMediaStats('episode', 'week');
-
-      expect(mediaService.getTVWatchingStats).toHaveBeenCalledWith(
-        'week',
-        undefined,
-      );
-      expect(result).toEqual(tvStats);
-    });
-
-    it('should get all stats types when type is "all"', async () => {
-      const combinedStats = {
-        music: { totalListeningTimeMs: 3600000 },
-        movies: { totalWatchTimeMs: 7200000 },
-        tv: { totalWatchTimeMs: 10800000 },
-      };
-
-      (mediaService.getStats as jest.Mock).mockResolvedValue(combinedStats);
-
-      const result = await controller.getMediaStats('all', 'week');
-
-      expect(mediaService.getStats).toHaveBeenCalledWith('week', undefined);
-      expect(result).toEqual(combinedStats);
-    });
-
-    it('should get all stats types for a specific user', async () => {
-      const combinedStats = {
-        user: 'TestUser',
-        music: { totalListeningTimeMs: 3600000 },
-        movies: { totalWatchTimeMs: 7200000 },
-        tv: { totalWatchTimeMs: 10800000 },
-      };
-
-      (mediaService.getStats as jest.Mock).mockResolvedValue(combinedStats);
-
-      const result = await controller.getMediaStats('all', 'week', 'TestUser');
-
-      expect(mediaService.getStats).toHaveBeenCalledWith('week', 'TestUser');
-      expect(result).toEqual(combinedStats);
     });
   });
 });

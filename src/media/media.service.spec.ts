@@ -1,499 +1,430 @@
+// Mock BaseStatsRepository since it's imported from a path that might not resolve in tests
+jest.mock(
+  'src/common/repositories/base-stats.repository',
+  () => {
+    class MockBaseStatsRepository {
+      protected getTimeframeCondition() {
+        return '';
+      }
+      protected getUserCondition() {
+        return '';
+      }
+      async getMediaSessionById() {
+        return null;
+      }
+      async findRecentSessions() {
+        return [];
+      }
+      async query() {
+        return [];
+      }
+    }
+
+    return {
+      BaseStatsRepository: MockBaseStatsRepository,
+    };
+  },
+  { virtual: true },
+);
+
+// Also mock BaseMediaRepository which is likely imported by other repositories
+jest.mock(
+  './repositories/base-media.repository',
+  () => {
+    class MockBaseMediaRepository {
+      constructor(protected repository: any) {}
+      async findById() {
+        return null;
+      }
+      async findAll() {
+        return [];
+      }
+      async query() {
+        return [];
+      }
+    }
+
+    return {
+      BaseMediaRepository: MockBaseMediaRepository,
+    };
+  },
+  { virtual: true },
+);
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { MediaService } from './media.service';
+import { MockProxy, mockDeep } from 'jest-mock-extended';
 import { TrackRepository } from './repositories/track.repository';
 import { MovieRepository } from './repositories/movie.repository';
 import { EpisodeRepository } from './repositories/episode.repository';
-import { MediaEventService } from './media-event.service';
-import { Episode } from './entities/episode.entity';
-import { Movie } from './entities/movie.entity';
+import { TrackStatsRepository } from './repositories/track-stats.repository';
+import { MovieStatsRepository } from './repositories/movie-stats.repository';
+import { EpisodeStatsRepository } from './repositories/episode-stats.repository';
+import { CombinedStatsRepository } from './repositories/combined-stats.repository';
+import { UserMediaSessionRepository } from './repositories/user-media-session.repository';
+import { UserRepository } from './repositories/user.repository';
+import { MediaSessionManager } from './managers/media-session.manager';
 import { Track } from './entities/track.entity';
+import { Movie } from './entities/movie.entity';
+import { Episode } from './entities/episode.entity';
+import { UserMediaSession } from './entities/user-media-session.entity';
+
+// Mock data for testing
+const mockTrack = {
+  id: '1',
+  title: 'Test Track',
+  artist: 'Test Artist',
+  album: 'Test Album',
+};
+const mockMovie = {
+  id: '1',
+  title: 'Test Movie',
+  director: 'Test Director',
+  year: 2023,
+};
+const mockEpisode = {
+  id: '1',
+  title: 'Test Episode',
+  showTitle: 'Test Show',
+  season: 1,
+  episode: 1,
+};
+const mockSession = {
+  id: '1',
+  mediaId: '1',
+  mediaType: 'track',
+  userId: 'user1',
+  startTime: new Date(),
+  endTime: new Date(),
+  state: 'playing',
+  timeWatchedMs: 1000,
+  track: mockTrack,
+  movie: null,
+  episode: null,
+};
+const mockStats = {
+  sessions: 10,
+  uniqueTracks: 5,
+  uniqueArtists: 3,
+  uniqueAlbums: 2,
+  totalListeningTimeMs: 5000,
+};
 
 describe('MediaService', () => {
   let service: MediaService;
-  let trackRepository: jest.Mocked<TrackRepository>;
-  let movieRepository: jest.Mocked<MovieRepository>;
-  let episodeRepository: jest.Mocked<EpisodeRepository>;
-  let mediaEventService: jest.Mocked<MediaEventService>;
-
-  const mockTrack = {
-    id: '1',
-    title: 'Test Track',
-    artist: 'Test Artist',
-    album: 'Test Album',
-    user: 'TestUser',
-  };
-
-  const mockMovie = {
-    id: '1',
-    title: 'Test Movie',
-    year: 2025,
-    director: 'Test Director',
-    user: 'TestUser',
-  };
-
-  const mockEpisode = {
-    id: '1',
-    title: 'Test Episode',
-    showTitle: 'Test Show',
-    season: 1,
-    episode: 1,
-    user: 'TestUser',
-  };
-
-  const mockCurrentMedia = {
-    tracks: [mockTrack],
-    movies: [],
-    episodes: [],
-  };
-
-  const mockStats = {
-    totalListeningTimeMs: 3600000,
-    topArtists: [{ name: 'Test Artist', count: 10 }],
-  };
+  let trackRepository: MockProxy<TrackRepository>;
+  let movieRepository: MockProxy<MovieRepository>;
+  let episodeRepository: MockProxy<EpisodeRepository>;
+  let trackStatsRepository: MockProxy<TrackStatsRepository>;
+  let movieStatsRepository: MockProxy<MovieStatsRepository>;
+  let episodeStatsRepository: MockProxy<EpisodeStatsRepository>;
+  let combinedStatsRepository: MockProxy<CombinedStatsRepository>;
+  let userMediaSessionRepository: MockProxy<UserMediaSessionRepository>;
+  let userRepository: MockProxy<UserRepository>;
+  let mediaSessionManager: MockProxy<MediaSessionManager>;
 
   beforeEach(async () => {
-    const mockTrackRepo = {
-      findById: jest.fn(),
-      findRecent: jest.fn(),
-      findByArtist: jest.fn(),
-      findByAlbum: jest.fn(),
-      findByState: jest.fn(),
-      findByUser: jest.fn(),
-      findByArtistAndUser: jest.fn(),
-      findByAlbumAndUser: jest.fn(),
-      findByStateAndUser: jest.fn(),
-      getListeningStats: jest.fn(),
-      getUserListeningStats: jest.fn(),
-      getTopAlbums: jest.fn(),
-      getUserTopAlbums: jest.fn(),
-    };
-
-    const mockMovieRepo = {
-      findById: jest.fn(),
-      findRecent: jest.fn(),
-      findByDirector: jest.fn(),
-      findByStudio: jest.fn(),
-      findByState: jest.fn(),
-      findByUser: jest.fn(),
-      findByDirectorAndUser: jest.fn(),
-      findByStudioAndUser: jest.fn(),
-      findByStateAndUser: jest.fn(),
-      getWatchingStats: jest.fn(),
-      getUserWatchingStats: jest.fn(),
-      getTopDirectors: jest.fn(),
-      getUserTopDirectors: jest.fn(),
-    };
-
-    const mockEpisodeRepo = {
-      findById: jest.fn(),
-      findRecent: jest.fn(),
-      findByShow: jest.fn(),
-      findBySeason: jest.fn(),
-      findByState: jest.fn(),
-      findByUser: jest.fn(),
-      findByShowAndUser: jest.fn(),
-      findBySeasonAndUser: jest.fn(),
-      findByStateAndUser: jest.fn(),
-      getWatchingStats: jest.fn(),
-      getUserWatchingStats: jest.fn(),
-      getShowsInProgress: jest.fn(),
-      getUserShowsInProgress: jest.fn(),
-    };
-
-    const mockMediaEventService = {
-      getCurrentMedia: jest.fn(),
-      getActiveUsers: jest.fn(),
-    };
+    // Create mocks for all repositories and services
+    trackRepository = mockDeep<TrackRepository>();
+    movieRepository = mockDeep<MovieRepository>();
+    episodeRepository = mockDeep<EpisodeRepository>();
+    trackStatsRepository = mockDeep<TrackStatsRepository>();
+    movieStatsRepository = mockDeep<MovieStatsRepository>();
+    episodeStatsRepository = mockDeep<EpisodeStatsRepository>();
+    combinedStatsRepository = mockDeep<CombinedStatsRepository>();
+    userMediaSessionRepository = mockDeep<UserMediaSessionRepository>();
+    userRepository = mockDeep<UserRepository>();
+    mediaSessionManager = mockDeep<MediaSessionManager>();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MediaService,
+        { provide: TrackRepository, useValue: trackRepository },
+        { provide: MovieRepository, useValue: movieRepository },
+        { provide: EpisodeRepository, useValue: episodeRepository },
+        { provide: TrackStatsRepository, useValue: trackStatsRepository },
+        { provide: MovieStatsRepository, useValue: movieStatsRepository },
+        { provide: EpisodeStatsRepository, useValue: episodeStatsRepository },
+        { provide: CombinedStatsRepository, useValue: combinedStatsRepository },
         {
-          provide: TrackRepository,
-          useValue: mockTrackRepo,
+          provide: UserMediaSessionRepository,
+          useValue: userMediaSessionRepository,
         },
-        {
-          provide: MovieRepository,
-          useValue: mockMovieRepo,
-        },
-        {
-          provide: EpisodeRepository,
-          useValue: mockEpisodeRepo,
-        },
-        {
-          provide: MediaEventService,
-          useValue: mockMediaEventService,
-        },
+        { provide: UserRepository, useValue: userRepository },
+        { provide: MediaSessionManager, useValue: mediaSessionManager },
       ],
     }).compile();
 
     service = module.get<MediaService>(MediaService);
-    trackRepository = module.get(
-      TrackRepository,
-    ) as jest.Mocked<TrackRepository>;
-    movieRepository = module.get(
-      MovieRepository,
-    ) as jest.Mocked<MovieRepository>;
-    episodeRepository = module.get(
-      EpisodeRepository,
-    ) as jest.Mocked<EpisodeRepository>;
-    mediaEventService = module.get(
-      MediaEventService,
-    ) as jest.Mocked<MediaEventService>;
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
   });
 
   describe('getCurrentMedia', () => {
-    it('should return media for a specific type', async () => {
-      mediaEventService.getCurrentMedia.mockReturnValue([mockTrack]);
+    it('should return current media of the specified type', async () => {
+      const expected = { tracks: [mockTrack] };
+      mediaSessionManager.getCurrentMedia.mockResolvedValue(expected);
 
-      const result = await service.getCurrentMedia('track');
-
-      expect(mediaEventService.getCurrentMedia).toHaveBeenCalledWith(
+      expect(await service.getCurrentMedia('track', 'user1')).toBe(expected);
+      expect(mediaSessionManager.getCurrentMedia).toHaveBeenCalledWith(
         'track',
-        undefined,
+        'user1',
       );
-      expect(result).toEqual([mockTrack]);
-    });
-
-    it('should return media for a specific type and user', async () => {
-      mediaEventService.getCurrentMedia.mockReturnValue([mockTrack]);
-
-      const result = await service.getCurrentMedia('track', 'TestUser');
-
-      expect(mediaEventService.getCurrentMedia).toHaveBeenCalledWith(
-        'track',
-        'TestUser',
-      );
-      expect(result).toEqual([mockTrack]);
-    });
-
-    it('should return all media types when type is "all"', async () => {
-      mediaEventService.getCurrentMedia.mockReturnValue({
-        tracks: [mockTrack],
-        movies: [],
-        episodes: [],
-      });
-
-      const result = await service.getCurrentMedia('all');
-
-      expect(mediaEventService.getCurrentMedia).toHaveBeenCalledWith(
-        'all',
-        undefined,
-      );
-      expect(result).toEqual({
-        tracks: [mockTrack],
-        movies: [],
-        episodes: [],
-      });
-    });
-  });
-
-  describe('getActiveUsers', () => {
-    it('should return active users', async () => {
-      mediaEventService.getActiveUsers.mockReturnValue([
-        'TestUser',
-        'AnotherUser',
-      ]);
-
-      const result = await service.getActiveUsers();
-
-      expect(mediaEventService.getActiveUsers).toHaveBeenCalled();
-      expect(result).toEqual(['TestUser', 'AnotherUser']);
     });
   });
 
   describe('getMediaById', () => {
-    it('should find track by id', async () => {
+    it('should get track by id', async () => {
       trackRepository.findById.mockResolvedValue(mockTrack as Track);
 
-      const result = await service.getMediaById('track', '1');
-
+      expect(await service.getMediaById('track', '1')).toBe(mockTrack);
       expect(trackRepository.findById).toHaveBeenCalledWith('1');
-      expect(result).toEqual(mockTrack);
     });
 
-    it('should find movie by id', async () => {
+    it('should get movie by id', async () => {
       movieRepository.findById.mockResolvedValue(mockMovie as Movie);
 
-      const result = await service.getMediaById('movie', '1');
-
+      expect(await service.getMediaById('movie', '1')).toBe(mockMovie);
       expect(movieRepository.findById).toHaveBeenCalledWith('1');
-      expect(result).toEqual(mockMovie);
     });
 
-    it('should find episode by id', async () => {
+    it('should get episode by id', async () => {
       episodeRepository.findById.mockResolvedValue(mockEpisode as Episode);
 
-      const result = await service.getMediaById('episode', '1');
-
+      expect(await service.getMediaById('episode', '1')).toBe(mockEpisode);
       expect(episodeRepository.findById).toHaveBeenCalledWith('1');
-      expect(result).toEqual(mockEpisode);
     });
 
-    it('should return null for invalid media type', async () => {
-      const result = await service.getMediaById('invalid', '1');
-
-      expect(result).toBeNull();
+    it('should return null for unknown media type', async () => {
+      expect(await service.getMediaById('unknown', '1')).toBeNull();
     });
   });
 
-  describe('track-related methods', () => {
-    it('should get recent tracks', async () => {
-      trackRepository.findRecent.mockResolvedValue([mockTrack as Track]);
+  describe('getRecentTracks', () => {
+    it('should return recent tracks for a specific user', async () => {
+      const sessionWithTrack = { ...mockSession, track: mockTrack };
+      userMediaSessionRepository.findRecentSessions.mockResolvedValue([
+        sessionWithTrack as unknown as UserMediaSession,
+      ]);
+
+      const result = await service.getRecentTracks(10, 'user1');
+
+      expect(result.length).toBe(1);
+      expect(result[0].id).toBe(mockTrack.id);
+      expect(result[0].title).toBe(mockTrack.title);
+      expect(result[0].sessionId).toBe(sessionWithTrack.id);
+      expect(
+        userMediaSessionRepository.findRecentSessions,
+      ).toHaveBeenCalledWith('track', 10, 'user1');
+    });
+
+    it('should return recent tracks for all users', async () => {
+      const sessionWithTrack = { ...mockSession, track: mockTrack };
+      userMediaSessionRepository.findRecentSessions.mockResolvedValue([
+        sessionWithTrack as unknown as UserMediaSession,
+      ]);
 
       const result = await service.getRecentTracks(10);
 
-      expect(trackRepository.findRecent).toHaveBeenCalledWith(10);
-      expect(result).toEqual([mockTrack]);
+      expect(result.length).toBe(1);
+      expect(result[0].id).toBe(mockTrack.id);
+      expect(result[0].title).toBe(mockTrack.title);
+      expect(result[0].userId).toBe(sessionWithTrack.userId);
+      expect(
+        userMediaSessionRepository.findRecentSessions,
+      ).toHaveBeenCalledWith('track', 10);
     });
+  });
 
-    it('should get recent tracks for a specific user', async () => {
-      trackRepository.findByUser.mockResolvedValue([mockTrack as Track]);
-
-      const result = await service.getRecentTracks(10, 'TestUser');
-
-      expect(trackRepository.findByUser).toHaveBeenCalledWith('TestUser', 10);
-      expect(result).toEqual([mockTrack]);
-    });
-
-    it('should get tracks by artist', async () => {
-      trackRepository.findByArtist.mockResolvedValue([mockTrack as Track]);
-
-      const result = await service.getTracksByArtist('Test Artist', 10);
-
-      expect(trackRepository.findByArtist).toHaveBeenCalledWith(
-        'Test Artist',
-        10,
-      );
-      expect(result).toEqual([mockTrack]);
-    });
-
-    it('should get tracks by artist for a specific user', async () => {
-      trackRepository.findByArtistAndUser.mockResolvedValue([
-        mockTrack as Track,
-      ]);
+  describe('getTracksByArtist', () => {
+    it('should return tracks by artist for a specific user', async () => {
+      trackStatsRepository.findByArtistAndUser.mockResolvedValue([mockTrack]);
 
       const result = await service.getTracksByArtist(
         'Test Artist',
         10,
-        'TestUser',
+        'user1',
       );
 
-      expect(trackRepository.findByArtistAndUser).toHaveBeenCalledWith(
+      expect(result).toEqual([mockTrack]);
+      expect(trackStatsRepository.findByArtistAndUser).toHaveBeenCalledWith(
         'Test Artist',
-        'TestUser',
+        'user1',
         10,
       );
-      expect(result).toEqual([mockTrack]);
     });
 
-    it('should get tracks by album', async () => {
-      trackRepository.findByAlbum.mockResolvedValue([mockTrack as Track]);
+    it('should return tracks by artist for all users', async () => {
+      trackStatsRepository.findByArtist.mockResolvedValue([mockTrack]);
 
-      const result = await service.getTracksByAlbum('Test Album', 10);
+      const result = await service.getTracksByArtist('Test Artist', 10);
 
-      expect(trackRepository.findByAlbum).toHaveBeenCalledWith(
-        'Test Album',
+      expect(result).toEqual([mockTrack]);
+      expect(trackStatsRepository.findByArtist).toHaveBeenCalledWith(
+        'Test Artist',
         10,
       );
-      expect(result).toEqual([mockTrack]);
     });
+  });
 
-    it('should get tracks by album for a specific user', async () => {
-      trackRepository.findByAlbumAndUser.mockResolvedValue([
-        mockTrack as Track,
-      ]);
+  describe('getListeningStats', () => {
+    it('should return listening stats for a specific user', async () => {
+      trackStatsRepository.getUserListeningStats.mockResolvedValue(mockStats);
 
-      const result = await service.getTracksByAlbum(
-        'Test Album',
-        10,
-        'TestUser',
+      const result = await service.getListeningStats('week', 'user1');
+
+      expect(result).toBe(mockStats);
+      expect(trackStatsRepository.getUserListeningStats).toHaveBeenCalledWith(
+        'user1',
+        'week',
       );
-
-      expect(trackRepository.findByAlbumAndUser).toHaveBeenCalledWith(
-        'Test Album',
-        'TestUser',
-        10,
-      );
-      expect(result).toEqual([mockTrack]);
     });
 
-    it('should get tracks by state', async () => {
-      trackRepository.findByState.mockResolvedValue([mockTrack as Track]);
-
-      const result = await service.getTracksByState('playing', 10);
-
-      expect(trackRepository.findByState).toHaveBeenCalledWith('playing', 10);
-      expect(result).toEqual([mockTrack]);
-    });
-
-    it('should get tracks by state for a specific user', async () => {
-      trackRepository.findByStateAndUser.mockResolvedValue([
-        mockTrack as Track,
-      ]);
-
-      const result = await service.getTracksByState('playing', 10, 'TestUser');
-
-      expect(trackRepository.findByStateAndUser).toHaveBeenCalledWith(
-        'playing',
-        'TestUser',
-        10,
-      );
-      expect(result).toEqual([mockTrack]);
-    });
-
-    it('should get listening stats', async () => {
-      trackRepository.getListeningStats.mockResolvedValue(mockStats);
+    it('should return listening stats for all users', async () => {
+      trackStatsRepository.getListeningStats.mockResolvedValue(mockStats);
 
       const result = await service.getListeningStats('week');
 
-      expect(trackRepository.getListeningStats).toHaveBeenCalledWith('week');
-      expect(result).toEqual(mockStats);
-    });
-
-    it('should get listening stats for a specific user', async () => {
-      trackRepository.getUserListeningStats.mockResolvedValue({
-        user: 'TestUser',
-        ...mockStats,
-      });
-
-      const result = await service.getListeningStats('week', 'TestUser');
-
-      expect(trackRepository.getUserListeningStats).toHaveBeenCalledWith(
-        'TestUser',
+      expect(result).toBe(mockStats);
+      expect(trackStatsRepository.getListeningStats).toHaveBeenCalledWith(
         'week',
       );
-      expect(result).toEqual({
-        user: 'TestUser',
-        ...mockStats,
-      });
-    });
-  });
-
-  describe('movie-related methods', () => {
-    it('should get recent movies', async () => {
-      movieRepository.findRecent.mockResolvedValue([mockMovie as Movie]);
-
-      const result = await service.getRecentMovies(10);
-
-      expect(movieRepository.findRecent).toHaveBeenCalledWith(10);
-      expect(result).toEqual([mockMovie]);
     });
 
-    it('should get recent movies for a specific user', async () => {
-      movieRepository.findByUser.mockResolvedValue([mockMovie as Movie]);
+    it('should use default timeframe if not provided', async () => {
+      trackStatsRepository.getListeningStats.mockResolvedValue(mockStats);
 
-      const result = await service.getRecentMovies(10, 'TestUser');
+      const result = await service.getListeningStats();
 
-      expect(movieRepository.findByUser).toHaveBeenCalledWith('TestUser', 10);
-      expect(result).toEqual([mockMovie]);
-    });
-
-    it('should get movies by director', async () => {
-      movieRepository.findByDirector.mockResolvedValue([mockMovie as Movie]);
-
-      const result = await service.getMoviesByDirector('Test Director', 10);
-
-      expect(movieRepository.findByDirector).toHaveBeenCalledWith(
-        'Test Director',
-        10,
+      expect(result).toBe(mockStats);
+      expect(trackStatsRepository.getListeningStats).toHaveBeenCalledWith(
+        'all',
       );
-      expect(result).toEqual([mockMovie]);
-    });
-
-    it('should get movies by director for a specific user', async () => {
-      movieRepository.findByDirectorAndUser.mockResolvedValue([
-        mockMovie as Movie,
-      ]);
-
-      const result = await service.getMoviesByDirector(
-        'Test Director',
-        10,
-        'TestUser',
-      );
-
-      expect(movieRepository.findByDirectorAndUser).toHaveBeenCalledWith(
-        'Test Director',
-        'TestUser',
-        10,
-      );
-      expect(result).toEqual([mockMovie]);
-    });
-  });
-
-  describe('episode-related methods', () => {
-    it('should get recent episodes', async () => {
-      episodeRepository.findRecent.mockResolvedValue([mockEpisode as Episode]);
-
-      const result = await service.getRecentEpisodes(10);
-
-      expect(episodeRepository.findRecent).toHaveBeenCalledWith(10);
-      expect(result).toEqual([mockEpisode]);
-    });
-
-    it('should get recent episodes for a specific user', async () => {
-      episodeRepository.findByUser.mockResolvedValue([mockEpisode as Episode]);
-
-      const result = await service.getRecentEpisodes(10, 'TestUser');
-
-      expect(episodeRepository.findByUser).toHaveBeenCalledWith('TestUser', 10);
-      expect(result).toEqual([mockEpisode]);
     });
   });
 
   describe('getStats', () => {
-    it('should get combined stats for all media types', async () => {
-      const musicStats = { totalListeningTimeMs: 3600000 };
-      const movieStats = { totalWatchTimeMs: 7200000 };
-      const tvStats = { totalWatchTimeMs: 10800000 };
+    it('should return combined stats for a specific user', async () => {
+      const allStats = {
+        music: mockStats,
+        movies: mockStats,
+        tv: mockStats,
+        total: { totalTime: 15000, count: 30 },
+      };
+      combinedStatsRepository.getUserStats.mockResolvedValue(allStats);
 
-      trackRepository.getListeningStats.mockResolvedValue(musicStats);
-      movieRepository.getWatchingStats.mockResolvedValue(movieStats);
-      episodeRepository.getWatchingStats.mockResolvedValue(tvStats);
+      const result = await service.getStats('week', 'user1');
+
+      expect(result).toBe(allStats);
+      expect(combinedStatsRepository.getUserStats).toHaveBeenCalledWith(
+        'user1',
+        'week',
+      );
+    });
+
+    it('should return combined stats for all users', async () => {
+      const allStats = {
+        music: mockStats,
+        movies: mockStats,
+        tv: mockStats,
+        total: { totalTime: 15000, count: 30 },
+      };
+      combinedStatsRepository.getOverallStats.mockResolvedValue(allStats);
 
       const result = await service.getStats('week');
 
-      expect(trackRepository.getListeningStats).toHaveBeenCalledWith('week');
-      expect(movieRepository.getWatchingStats).toHaveBeenCalledWith('week');
-      expect(episodeRepository.getWatchingStats).toHaveBeenCalledWith('week');
+      expect(result).toBe(allStats);
+      expect(combinedStatsRepository.getOverallStats).toHaveBeenCalledWith(
+        'week',
+      );
+    });
+  });
 
-      expect(result).toEqual({
-        music: musicStats,
-        movies: movieStats,
-        tv: tvStats,
-      });
+  describe('getMoviesByDirector', () => {
+    it('should return movies by director for a specific user', async () => {
+      movieStatsRepository.findByDirectorAndUser.mockResolvedValue([mockMovie]);
+
+      const result = await service.getMoviesByDirector(
+        'Test Director',
+        10,
+        'user1',
+      );
+
+      expect(result).toEqual([mockMovie]);
+      expect(movieStatsRepository.findByDirectorAndUser).toHaveBeenCalledWith(
+        'Test Director',
+        'user1',
+        10,
+      );
     });
 
-    it('should get combined stats for a specific user', async () => {
-      const musicStats = { totalListeningTimeMs: 3600000 };
-      const movieStats = { totalWatchTimeMs: 7200000 };
-      const tvStats = { totalWatchTimeMs: 10800000 };
+    it('should return movies by director for all users', async () => {
+      movieStatsRepository.findByDirector.mockResolvedValue([mockMovie]);
 
-      trackRepository.getUserListeningStats.mockResolvedValue(musicStats);
-      movieRepository.getUserWatchingStats.mockResolvedValue(movieStats);
-      episodeRepository.getUserWatchingStats.mockResolvedValue(tvStats);
+      const result = await service.getMoviesByDirector('Test Director', 10);
 
-      const result = await service.getStats('week', 'TestUser');
-
-      expect(trackRepository.getUserListeningStats).toHaveBeenCalledWith(
-        'TestUser',
-        'week',
+      expect(result).toEqual([mockMovie]);
+      expect(movieStatsRepository.findByDirector).toHaveBeenCalledWith(
+        'Test Director',
+        10,
       );
-      expect(movieRepository.getUserWatchingStats).toHaveBeenCalledWith(
-        'TestUser',
-        'week',
-      );
-      expect(episodeRepository.getUserWatchingStats).toHaveBeenCalledWith(
-        'TestUser',
-        'week',
-      );
+    });
+  });
 
-      expect(result).toEqual({
-        user: 'TestUser',
-        music: musicStats,
-        movies: movieStats,
-        tv: tvStats,
-      });
+  describe('getEpisodesByShow', () => {
+    it('should return episodes by show for a specific user', async () => {
+      episodeStatsRepository.findByShowAndUser.mockResolvedValue([mockEpisode]);
+
+      const result = await service.getEpisodesByShow('Test Show', 10, 'user1');
+
+      expect(result).toEqual([mockEpisode]);
+      expect(episodeStatsRepository.findByShowAndUser).toHaveBeenCalledWith(
+        'Test Show',
+        'user1',
+        10,
+      );
+    });
+
+    it('should return episodes by show for all users', async () => {
+      episodeStatsRepository.findByShow.mockResolvedValue([mockEpisode]);
+
+      const result = await service.getEpisodesByShow('Test Show', 10);
+
+      expect(result).toEqual([mockEpisode]);
+      expect(episodeStatsRepository.findByShow).toHaveBeenCalledWith(
+        'Test Show',
+        10,
+      );
+    });
+  });
+
+  describe('getShowsInProgress', () => {
+    it('should return shows in progress for a specific user', async () => {
+      const expected = [
+        { show: 'Test Show', episodesWatched: 5, totalEpisodes: 10 },
+      ];
+      episodeStatsRepository.getUserShowsInProgress.mockResolvedValue(expected);
+
+      const result = await service.getShowsInProgress('user1');
+
+      expect(result).toBe(expected);
+      expect(
+        episodeStatsRepository.getUserShowsInProgress,
+      ).toHaveBeenCalledWith('user1');
+    });
+
+    it('should return shows in progress for all users', async () => {
+      const expected = [
+        { show: 'Test Show', episodesWatched: 5, totalEpisodes: 10 },
+      ];
+      episodeStatsRepository.getShowsInProgress.mockResolvedValue(expected);
+
+      const result = await service.getShowsInProgress();
+
+      expect(result).toBe(expected);
+      expect(episodeStatsRepository.getShowsInProgress).toHaveBeenCalled();
     });
   });
 });
