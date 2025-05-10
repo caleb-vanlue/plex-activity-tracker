@@ -1,8 +1,9 @@
-name: deploy
+name: Deploy Plex History API
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -11,22 +12,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Build test Docker image
+      - name: Run unit tests
         shell: powershell
         run: |
-          docker pull plex-history-app:test -ErrorAction SilentlyContinue
-          docker build -t plex-history-app:test .
-
-      - name: Run unit tests in Docker
-        shell: powershell
-        run: |
-          docker run --rm plex-history-app:test npm run test
+          docker build --target test -t plex-history-app:test .
+          docker run --rm plex-history-app:test
 
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Tests failed with exit code $LASTEXITCODE"
             exit 1
-          } else {
-            Write-Host "All tests passed successfully!"
           }
 
   deploy:
@@ -42,19 +36,7 @@ jobs:
         run: |
           docker-compose build plex-history-app
 
-      - name: Run database migrations
-        shell: powershell
-        env:
-          DB_HOST: host.docker.internal
-          NODE_ENV: production
-        run: |
-          docker-compose run --rm `
-            -e DB_HOST=$env:DB_HOST `
-            -e NODE_ENV=$env:NODE_ENV `
-            plex-history-app `
-            npm run migration:run
-
-      - name: Deploy services
+      - name: Deploy service
         shell: powershell
         env:
           DB_HOST: host.docker.internal
@@ -62,22 +44,30 @@ jobs:
           FILE_STORAGE_TIMEOUT_MS: 15000
           FILE_STORAGE_MAX_RETRIES: 3
           NODE_ENV: production
-          PORT: 3000
         run: |
+          # Create environment file for docker-compose
+          @"
+          DB_HOST=$env:DB_HOST
+          FILE_STORAGE_API_URL=$env:FILE_STORAGE_API_URL
+          FILE_STORAGE_TIMEOUT_MS=$env:FILE_STORAGE_TIMEOUT_MS
+          FILE_STORAGE_MAX_RETRIES=$env:FILE_STORAGE_MAX_RETRIES
+          NODE_ENV=$env:NODE_ENV
+          "@ | Out-File -Encoding utf8 .env
+
+          docker-compose run --rm plex-history-app npm run migration:run
+
           $containerExists = docker ps -a --filter "name=plex-history-app" --format "{{.Names}}"
           if ($containerExists) {
-            Write-Host "Stopping existing container"
-            docker-compose stop plex-history-app
-            docker-compose rm -f plex-history-app
-          } else {
-            Write-Host "Container doesn't exist, continuing..."
+            Write-Host "Stopping and removing existing container..."
+            docker stop plex-history-app
+            docker rm plex-history-app
           }
 
           docker-compose up -d plex-history-app
 
-          docker-compose ps
+          docker ps -f name=plex-history-app
 
       - name: Cleanup
         shell: powershell
         run: |
-          docker image prune -f
+          docker image prune -a --filter "until=72h" --force
