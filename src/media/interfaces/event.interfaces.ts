@@ -1,5 +1,4 @@
 import { MediaType } from 'src/common/interfaces/media.interfaces';
-import { MediaSession } from 'src/media/interfaces/session.interfaces';
 
 export interface PlexMetadata {
   type: MediaType;
@@ -36,7 +35,7 @@ export interface PlexWebhookPayload {
 
 export interface MediaEventResult<T> {
   media: T;
-  session?: MediaSession;
+  session?: MediaSession | null;
 }
 
 export interface MediaProcessor<T> {
@@ -46,4 +45,5 @@ export interface MediaProcessor<T> {
     thumbnailId: string | null,
     userId: string,
   ): Promise<MediaEventResult<T>>;
+  mapEventToState(event: string): string;
 }
