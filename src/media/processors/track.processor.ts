@@ -22,7 +22,6 @@ export class TrackProcessor extends AbstractMediaProcessor {
   ): Promise<any> {
     const now = new Date();
 
-    // Create or update the track entity (metadata only)
     const trackData = {
       ratingKey: payload.Metadata.ratingKey,
       title: payload.Metadata.title,
@@ -32,7 +31,6 @@ export class TrackProcessor extends AbstractMediaProcessor {
       raw: payload,
     };
 
-    // Find or create track
     let track = await this.trackRepository.findByRatingKey(trackData.ratingKey);
     if (!track) {
       track = await this.trackRepository.create(trackData);
@@ -41,7 +39,6 @@ export class TrackProcessor extends AbstractMediaProcessor {
       );
     }
 
-    // Find existing session for this track and user
     let session = await this.userMediaSessionRepository.findActive(
       userId,
       'track',
@@ -49,7 +46,6 @@ export class TrackProcessor extends AbstractMediaProcessor {
     );
 
     if (state === 'playing') {
-      // Stop any other playing tracks for this user
       const activeSessions =
         await this.userMediaSessionRepository.findAllActiveTracks(userId);
 
@@ -71,7 +67,6 @@ export class TrackProcessor extends AbstractMediaProcessor {
         }
       }
 
-      // Create or update current session
       if (!session) {
         session = await this.userMediaSessionRepository.create({
           userId,
@@ -85,7 +80,6 @@ export class TrackProcessor extends AbstractMediaProcessor {
         });
       } else {
         if (session.state === 'playing' && payload.event === 'media.scrobble') {
-          // Calculate watched time before restarting
           const sessionTime = now.getTime() - session.startTime.getTime();
           await this.userMediaSessionRepository.update(session.id, {
             timeWatchedMs: session.timeWatchedMs + sessionTime,
@@ -100,7 +94,6 @@ export class TrackProcessor extends AbstractMediaProcessor {
             player: payload.Player?.title,
           });
         }
-        // Refresh session from database
         session = await this.userMediaSessionRepository.findById(session.id);
       }
     } else if (state === 'paused' || state === 'stopped') {
@@ -117,7 +110,6 @@ export class TrackProcessor extends AbstractMediaProcessor {
       }
     }
 
-    // Emit event with session details
     const eventData = {
       type: 'track',
       trackId: track.id,

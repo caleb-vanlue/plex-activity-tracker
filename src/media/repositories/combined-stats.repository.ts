@@ -32,7 +32,6 @@ export class CombinedStatsRepository extends BaseStatsRepository {
 
     const stats = await this.query(query);
 
-    // Get stats by media type
     const mediaTypeQuery = `
       SELECT 
         session."mediaType",
@@ -62,7 +61,6 @@ export class CombinedStatsRepository extends BaseStatsRepository {
 
     const topUsers = await this.query(topUsersQuery);
 
-    // Get recent activity
     const recentActivityQuery = `
       SELECT 
         session.id,
@@ -124,7 +122,6 @@ export class CombinedStatsRepository extends BaseStatsRepository {
 
     const stats = await this.query(query);
 
-    // Get stats by media type
     const mediaTypeQuery = `
       SELECT 
         session."mediaType",
@@ -137,7 +134,6 @@ export class CombinedStatsRepository extends BaseStatsRepository {
 
     const mediaTypeStats = await this.query(mediaTypeQuery);
 
-    // Get usage by day of week
     const dayOfWeekQuery = `
       SELECT 
         EXTRACT(DOW FROM session."startTime") as dayOfWeek,
@@ -151,7 +147,6 @@ export class CombinedStatsRepository extends BaseStatsRepository {
 
     const dayOfWeekStats = await this.query(dayOfWeekQuery);
 
-    // Get usage by time of day
     const timeOfDayQuery = `
       SELECT 
         EXTRACT(HOUR FROM session."startTime") as hourOfDay,
@@ -165,7 +160,6 @@ export class CombinedStatsRepository extends BaseStatsRepository {
 
     const timeOfDayStats = await this.query(timeOfDayQuery);
 
-    // Get recent activity
     const recentActivityQuery = `
       SELECT 
         session.id,
@@ -234,7 +228,6 @@ export class CombinedStatsRepository extends BaseStatsRepository {
   ): Promise<any> {
     const timeConstraint = this.getTimeframeCondition(timeframe);
 
-    // Trending tracks
     const tracksQuery = `
       SELECT 
         track.id,
@@ -255,7 +248,6 @@ export class CombinedStatsRepository extends BaseStatsRepository {
 
     const trendingTracks = await this.query(tracksQuery);
 
-    // Trending movies
     const moviesQuery = `
       SELECT 
         movie.id,
@@ -276,7 +268,6 @@ export class CombinedStatsRepository extends BaseStatsRepository {
 
     const trendingMovies = await this.query(moviesQuery);
 
-    // Trending shows
     const showsQuery = `
       SELECT 
         episode."showTitle",
@@ -329,7 +320,6 @@ export class CombinedStatsRepository extends BaseStatsRepository {
 
     const userStats = await this.query(query);
 
-    // Get common media
     const commonMediaQuery = `
       WITH user_media AS (
         SELECT 

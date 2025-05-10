@@ -51,7 +51,6 @@ export class EpisodeProcessor extends AbstractMediaProcessor {
     );
 
     if (state === 'playing') {
-      // Stop other playing episodes
       const activeSessions =
         await this.userMediaSessionRepository.findAllActiveEpisodes(userId);
 
@@ -67,7 +66,6 @@ export class EpisodeProcessor extends AbstractMediaProcessor {
         }
       }
 
-      // Create or update current session
       if (!session) {
         session = await this.userMediaSessionRepository.create({
           userId,

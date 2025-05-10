@@ -26,12 +26,10 @@ export class MediaService {
     private mediaSessionManager: MediaSessionManager,
   ) {}
 
-  // Use session manager for current media
   async getCurrentMedia(type: string, user?: string): Promise<any> {
     return this.mediaSessionManager.getCurrentMedia(type, user);
   }
 
-  // Use session manager for active users
   async getActiveUsers(): Promise<string[]> {
     return this.mediaSessionManager.getActiveUsers();
   }

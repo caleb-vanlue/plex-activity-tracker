@@ -86,11 +86,9 @@ export class MediaSessionManager {
   }
 
   updateSession(session: any): void {
-    // If state is stopped, remove the session
     if (session.state === 'stopped') {
       this.removeSession(session.userId, session.mediaType, session.id);
     } else {
-      // Otherwise update the session
       this.addSession(session);
     }
   }

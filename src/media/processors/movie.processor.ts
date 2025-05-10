@@ -49,7 +49,6 @@ export class MovieProcessor extends AbstractMediaProcessor {
     );
 
     if (state === 'playing') {
-      // Stop other playing movies
       const activeSessions =
         await this.userMediaSessionRepository.findAllActiveMovies(userId);
 
@@ -65,7 +64,6 @@ export class MovieProcessor extends AbstractMediaProcessor {
         }
       }
 
-      // Create or update current session
       if (!session) {
         session = await this.userMediaSessionRepository.create({
           userId,

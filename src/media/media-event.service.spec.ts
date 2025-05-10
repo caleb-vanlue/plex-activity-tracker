@@ -1,5 +1,3 @@
-// src/media/__tests__/media-event.service.spec.ts
-
 import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Logger } from '@nestjs/common';
@@ -23,7 +21,6 @@ describe('MediaEventService', () => {
   let episodeProcessor: jest.Mocked<EpisodeProcessor>;
 
   beforeEach(async () => {
-    // Create mocks for all dependencies
     const eventEmitterMock = {
       emit: jest.fn(),
     };
@@ -67,7 +64,6 @@ describe('MediaEventService', () => {
       ],
     }).compile();
 
-    // Suppress console logs during tests
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
     jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
@@ -109,7 +105,6 @@ describe('MediaEventService', () => {
       const payload = {
         event: 'media.play',
         Account: { title: 'testUser' },
-        // No Metadata field
       };
 
       const result = await service.processPlexWebhook(payload, null);
@@ -120,7 +115,6 @@ describe('MediaEventService', () => {
       const payload = {
         event: 'media.play',
         Metadata: { type: 'track' },
-        // No Account field
       };
 
       const result = await service.processPlexWebhook(payload, null);

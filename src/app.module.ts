@@ -29,8 +29,6 @@ import { EpisodeStatsRepository } from './media/repositories/episode-stats.repos
 import { CombinedStatsRepository } from './media/repositories/combined-stats.repository';
 import { UserMediaSessionRepository } from './media/repositories/user-media-session.repository';
 import { UserRepository } from './media/repositories/user.repository';
-
-// New Components
 import { TrackProcessor } from './media/processors/track.processor';
 import { MovieProcessor } from './media/processors/movie.processor';
 import { EpisodeProcessor } from './media/processors/episode.processor';
@@ -57,7 +55,6 @@ import { ThumbnailModule } from './thumbnail/thumbnail.module';
   ],
   controllers: [PlexController, MediaController],
   providers: [
-    // Existing providers
     ThumbnailService,
     TrackRepository,
     MovieRepository,
@@ -71,7 +68,6 @@ import { ThumbnailModule } from './thumbnail/thumbnail.module';
     UserMediaSessionRepository,
     UserRepository,
 
-    // New providers
     TrackProcessor,
     MovieProcessor,
     EpisodeProcessor,

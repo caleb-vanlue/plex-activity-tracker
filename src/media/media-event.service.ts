@@ -45,20 +45,14 @@ export class MediaEventService implements OnModuleInit {
     );
 
     try {
-      // Get the appropriate processor based on media type
       const processor = this.mediaProcessorFactory.getProcessor(mediaType);
 
-      // Process the event
       const result = await processor.processEvent(
         payload,
         state,
         thumbnailId,
         user.id,
       );
-
-      // We don't need to manually update the session manager anymore
-      // It's listening to events from the processors
-
       return result;
     } catch (error) {
       this.logger.error(
