@@ -1,14 +1,7 @@
-import { IsOptional, IsInt, Min, Max, IsString, IsIn } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsString } from 'class-validator';
+import { MediaQueryDto } from '../../common/dto/media-query.dto';
 
-export class TrackQueryDto {
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number = 10;
-
+export class TrackQueryDto extends MediaQueryDto {
   @IsOptional()
   @IsString()
   artist?: string;
@@ -16,16 +9,4 @@ export class TrackQueryDto {
   @IsOptional()
   @IsString()
   album?: string;
-
-  @IsOptional()
-  @IsString()
-  @IsIn(['playing', 'paused', 'stopped', 'all'])
-  state?: string = 'all';
-}
-
-export class StatsQueryDto {
-  @IsOptional()
-  @IsString()
-  @IsIn(['day', 'week', 'month', 'all'])
-  timeframe?: 'day' | 'week' | 'month' | 'all' = 'all';
 }

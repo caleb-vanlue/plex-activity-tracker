@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Track } from '../entities/track.entity';
-import { BaseMediaRepository } from '../../common/repositories/base-media.repository';
+import { BaseMediaRepository } from '../../common/repositories/base.repository';
 
 @Injectable()
 export class TrackRepository extends BaseMediaRepository<Track> {
