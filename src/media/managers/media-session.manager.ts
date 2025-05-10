@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { UserMediaSessionRepository } from '../repositories/user-media-session.repository';
 
 @Injectable()
@@ -24,7 +25,10 @@ export class MediaSessionManager {
     episodes: new Map(),
   };
 
-  constructor(private userMediaSessionRepository: UserMediaSessionRepository) {}
+  constructor(
+    private userMediaSessionRepository: UserMediaSessionRepository,
+    private eventEmitter: EventEmitter2,
+  ) {}
 
   async initialize(): Promise<void> {
     const activeSessions =
@@ -35,6 +39,37 @@ export class MediaSessionManager {
     }
 
     this.logger.log('Media session manager initialized with active sessions');
+
+    this.eventEmitter.on('plex.trackEvent', (eventData) => {
+      this.logger.debug(`Handling track event: ${JSON.stringify(eventData)}`);
+      this.handleMediaEvent(eventData, 'track');
+    });
+
+    this.eventEmitter.on('plex.videoEvent', (eventData) => {
+      this.logger.debug(`Handling video event: ${JSON.stringify(eventData)}`);
+      const mediaType = eventData.type === 'episode' ? 'episode' : 'movie';
+      this.handleMediaEvent(eventData, mediaType);
+    });
+  }
+
+  private async handleMediaEvent(
+    eventData: any,
+    mediaType: string,
+  ): Promise<void> {
+    const { sessionId, state, userId } = eventData;
+
+    if (state === 'stopped') {
+      this.removeSession(userId, mediaType, sessionId);
+    } else {
+      const session = await this.userMediaSessionRepository.findById(sessionId);
+      if (session) {
+        this.updateSession(session);
+      } else {
+        this.logger.warn(
+          `Session with ID ${sessionId} not found for user ${userId}`,
+        );
+      }
+    }
   }
 
   addSession(session: any): void {

@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { TrackRepository } from '../repositories/track.repository';
 import { UserMediaSessionRepository } from '../repositories/user-media-session.repository';
 import { AbstractMediaProcessor } from './abstract-media.processor';
+import { SessionStateEnum } from 'src/common/constants/media.constants';
 
 @Injectable()
 export class TrackProcessor extends AbstractMediaProcessor {
@@ -54,6 +55,21 @@ export class TrackProcessor extends AbstractMediaProcessor {
           this.logger.debug(
             `Stopping track ${activeSession.track?.title} for user ${userId} because a new track started playing`,
           );
+
+          const eventData = {
+            type: 'track',
+            trackId: activeSession.track.id,
+            sessionId: activeSession?.id,
+            title: activeSession.track.title,
+            artist: activeSession.track.artist,
+            album: activeSession.track.album,
+            state: SessionStateEnum.STOPPED,
+            userId,
+            player: payload.Player?.title,
+            timestamp: now.toISOString(),
+          };
+
+          this.eventEmitter.emit('plex.trackEvent', eventData);
 
           const endTime = now;
           const sessionTime =

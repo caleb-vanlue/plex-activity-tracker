@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EpisodeRepository } from '../repositories/episode.repository';
 import { UserMediaSessionRepository } from '../repositories/user-media-session.repository';
 import { AbstractMediaProcessor } from './abstract-media.processor';
+import { SessionStateEnum } from 'src/common/constants/media.constants';
 
 @Injectable()
 export class EpisodeProcessor extends AbstractMediaProcessor {
@@ -63,6 +64,19 @@ export class EpisodeProcessor extends AbstractMediaProcessor {
               activeSession.timeWatchedMs +
               (now.getTime() - activeSession.startTime.getTime()),
           });
+
+          const eventData = {
+            type: 'movie',
+            trackId: activeSession.movie.id,
+            sessionId: activeSession?.id,
+            title: activeSession.movie.title,
+            state: SessionStateEnum.STOPPED,
+            userId,
+            player: payload.Player?.title,
+            timestamp: now.toISOString(),
+          };
+
+          this.eventEmitter.emit('plex.videoEvent', eventData);
         }
       }
 
