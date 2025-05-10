@@ -17,7 +17,6 @@ export const getDataSourceOptions = (): DataSourceOptions => ({
   database: process.env.DB_DATABASE || 'plex',
   entities: [Track, Episode, Movie, User, UserMediaSession],
   migrations: ['dist/migrations/*.js'],
-  logging: true,
 });
 
 const dataSource = new DataSource(getDataSourceOptions());
