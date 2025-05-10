@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserMediaSession } from '../entities/user-media-session.entity';
 
 @Injectable()
 export class UserMediaSessionRepository {
+  private readonly logger = new Logger(UserMediaSessionRepository.name);
+
   constructor(
     @InjectRepository(UserMediaSession)
     private repository: Repository<UserMediaSession>,
@@ -38,53 +40,64 @@ export class UserMediaSessionRepository {
     mediaType: string,
     mediaId?: string,
   ): Promise<UserMediaSession | null> {
-    const query: any = {
-      userId,
-      mediaType,
-      state: 'playing',
-    };
+    const queryBuilder = this.repository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.track', 'track')
+      .leftJoinAndSelect('session.movie', 'movie')
+      .leftJoinAndSelect('session.episode', 'episode')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.mediaType = :mediaType', { mediaType })
+      .andWhere(
+        '(session.state = :playingState OR session.state = :pausedState)',
+        { playingState: 'playing', pausedState: 'paused' },
+      );
 
     if (mediaId) {
-      query.mediaId = mediaId;
+      queryBuilder.andWhere('session.mediaId = :mediaId', { mediaId });
     }
 
-    return this.repository.findOne({
-      where: query,
-      relations: ['track', 'movie', 'episode'],
-    });
+    this.logger.debug(`Finding active session: ${queryBuilder.getSql()}`);
+
+    return queryBuilder.orderBy('session.startTime', 'DESC').getOne();
   }
 
   async findAllActiveTracks(userId: string): Promise<UserMediaSession[]> {
-    return this.repository.find({
-      where: {
-        userId,
-        mediaType: 'track',
-        state: 'playing',
-      },
-      relations: ['track'],
-    });
+    return this.repository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.track', 'track')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.mediaType = :mediaType', { mediaType: 'track' })
+      .andWhere(
+        '(session.state = :playingState OR session.state = :pausedState)',
+        { playingState: 'playing', pausedState: 'paused' },
+      )
+      .getMany();
   }
 
   async findAllActiveMovies(userId: string): Promise<UserMediaSession[]> {
-    return this.repository.find({
-      where: {
-        userId,
-        mediaType: 'movie',
-        state: 'playing',
-      },
-      relations: ['movie'],
-    });
+    return this.repository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.movie', 'movie')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.mediaType = :mediaType', { mediaType: 'movie' })
+      .andWhere(
+        '(session.state = :playingState OR session.state = :pausedState)',
+        { playingState: 'playing', pausedState: 'paused' },
+      )
+      .getMany();
   }
 
   async findAllActiveEpisodes(userId: string): Promise<UserMediaSession[]> {
-    return this.repository.find({
-      where: {
-        userId,
-        mediaType: 'episode',
-        state: 'playing',
-      },
-      relations: ['episode'],
-    });
+    return this.repository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.episode', 'episode')
+      .where('session.userId = :userId', { userId })
+      .andWhere('session.mediaType = :mediaType', { mediaType: 'episode' })
+      .andWhere(
+        '(session.state = :playingState OR session.state = :pausedState)',
+        { playingState: 'playing', pausedState: 'paused' },
+      )
+      .getMany();
   }
 
   async findByTimeframe(
@@ -116,22 +129,30 @@ export class UserMediaSessionRepository {
   }
 
   async findActiveByUser(userId: string): Promise<UserMediaSession[]> {
-    return this.repository.find({
-      where: {
-        userId,
-        state: 'playing',
-      },
-      relations: ['track', 'movie', 'episode'],
-    });
+    return this.repository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.track', 'track')
+      .leftJoinAndSelect('session.movie', 'movie')
+      .leftJoinAndSelect('session.episode', 'episode')
+      .where('session.userId = :userId', { userId })
+      .andWhere(
+        '(session.state = :playingState OR session.state = :pausedState)',
+        { playingState: 'playing', pausedState: 'paused' },
+      )
+      .getMany();
   }
 
   async findAllActive(): Promise<UserMediaSession[]> {
-    return this.repository.find({
-      where: {
-        state: 'playing',
-      },
-      relations: ['track', 'movie', 'episode'],
-    });
+    return this.repository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.track', 'track')
+      .leftJoinAndSelect('session.movie', 'movie')
+      .leftJoinAndSelect('session.episode', 'episode')
+      .where(
+        '(session.state = :playingState OR session.state = :pausedState)',
+        { playingState: 'playing', pausedState: 'paused' },
+      )
+      .getMany();
   }
 
   async findRecentSessions(
@@ -139,20 +160,81 @@ export class UserMediaSessionRepository {
     limit: number = 10,
     userId?: string,
   ): Promise<UserMediaSession[]> {
-    const query: any = {
-      mediaType,
-    };
+    const queryBuilder = this.repository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.track', 'track')
+      .leftJoinAndSelect('session.movie', 'movie')
+      .leftJoinAndSelect('session.episode', 'episode')
+      .where('session.mediaType = :mediaType', { mediaType });
 
     if (userId) {
-      query.userId = userId;
+      queryBuilder.andWhere('session.userId = :userId', { userId });
     }
 
-    return this.repository.find({
-      where: query,
-      relations: ['track', 'movie', 'episode'],
-      order: { startTime: 'DESC' },
-      take: limit,
-    });
+    return queryBuilder
+      .orderBy('session.startTime', 'DESC')
+      .take(limit)
+      .getMany();
+  }
+
+  async findPausedSessions(
+    userId?: string,
+    mediaType?: string,
+  ): Promise<UserMediaSession[]> {
+    const queryBuilder = this.repository
+      .createQueryBuilder('session')
+      .leftJoinAndSelect('session.track', 'track')
+      .leftJoinAndSelect('session.movie', 'movie')
+      .leftJoinAndSelect('session.episode', 'episode')
+      .where('session.state = :state', { state: 'paused' });
+
+    if (userId) {
+      queryBuilder.andWhere('session.userId = :userId', { userId });
+    }
+
+    if (mediaType) {
+      queryBuilder.andWhere('session.mediaType = :mediaType', { mediaType });
+    }
+
+    return queryBuilder.getMany();
+  }
+
+  async cleanupStaleSessions(
+    olderThan: number = 3 * 60 * 60 * 1000,
+  ): Promise<number> {
+    const staleDate = new Date(Date.now() - olderThan);
+
+    const stalePausedSessions = await this.repository
+      .createQueryBuilder('session')
+      .where('session.state = :state', { state: 'paused' })
+      .andWhere('session.pausedAt < :staleDate', { staleDate })
+      .getMany();
+
+    let updatedCount = 0;
+
+    for (const session of stalePausedSessions) {
+      await this.update(session.id, {
+        state: 'stopped',
+        endTime: session.pausedAt,
+      });
+      updatedCount++;
+    }
+
+    const stalePlayingSessions = await this.repository
+      .createQueryBuilder('session')
+      .where('session.state = :state', { state: 'playing' })
+      .andWhere('session.startTime < :staleDate', { staleDate })
+      .getMany();
+
+    for (const session of stalePlayingSessions) {
+      await this.update(session.id, {
+        state: 'stopped',
+        endTime: new Date(),
+      });
+      updatedCount++;
+    }
+
+    return updatedCount;
   }
 
   createQueryBuilder(alias: string) {

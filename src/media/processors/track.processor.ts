@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { TrackRepository } from '../repositories/track.repository';
 import { UserMediaSessionRepository } from '../repositories/user-media-session.repository';
@@ -44,6 +44,9 @@ export class TrackProcessor extends AbstractMediaProcessor {
       userId,
       'track',
       track.id,
+    );
+    this.logger.debug(
+      `Found session for track ${track.title}: ${!!session ? session.id : 'none'}, state: ${session?.state || 'N/A'}`,
     );
 
     if (state === 'playing') {
@@ -94,27 +97,76 @@ export class TrackProcessor extends AbstractMediaProcessor {
           player: payload.Player?.title,
           timeWatchedMs: 0,
         });
+        this.logger.debug(
+          `Created new session for track ${track.title} for user ${userId}`,
+        );
+      } else if (session.state === 'paused') {
+        this.logger.debug(
+          `Resuming paused track ${track.title} for user ${userId}`,
+        );
+        await this.userMediaSessionRepository.update(session.id, {
+          state: 'playing',
+          startTime: now,
+          pausedAt: null,
+          player: payload.Player?.title,
+        });
+      } else if (
+        session.state === 'playing' &&
+        payload.event === 'media.scrobble'
+      ) {
+        const sessionTime = now.getTime() - session.startTime.getTime();
+        await this.userMediaSessionRepository.update(session.id, {
+          timeWatchedMs: session.timeWatchedMs + sessionTime,
+          startTime: now,
+          state: 'playing',
+          player: payload.Player?.title,
+        });
       } else {
-        if (session.state === 'playing' && payload.event === 'media.scrobble') {
+        await this.userMediaSessionRepository.update(session.id, {
+          state: 'playing',
+          startTime: now,
+          player: payload.Player?.title,
+        });
+      }
+
+      session = await this.userMediaSessionRepository.findById(session.id);
+    } else if (state === 'paused') {
+      if (session) {
+        if (session.state === 'playing') {
           const sessionTime = now.getTime() - session.startTime.getTime();
+          this.logger.debug(
+            `Pausing track ${track.title}, adding ${sessionTime}ms watched time`,
+          );
+
           await this.userMediaSessionRepository.update(session.id, {
+            state,
+            pausedAt: now,
             timeWatchedMs: session.timeWatchedMs + sessionTime,
-            startTime: now,
-            state: 'playing',
-            player: payload.Player?.title,
+          });
+        } else if (session.state !== 'paused') {
+          await this.userMediaSessionRepository.update(session.id, {
+            state: 'paused',
+            pausedAt: now,
           });
         } else {
-          await this.userMediaSessionRepository.update(session.id, {
-            state: 'playing',
-            startTime: now,
-            player: payload.Player?.title,
-          });
+          this.logger.debug(
+            `Track ${track.title} already paused, not adding time`,
+          );
         }
+
         session = await this.userMediaSessionRepository.findById(session.id);
       }
-    } else if (state === 'paused' || state === 'stopped') {
+    } else if (state === 'stopped') {
       if (session) {
-        const sessionTime = now.getTime() - session.startTime.getTime();
+        let sessionTime = 0;
+
+        if (session.state === 'playing') {
+          sessionTime = now.getTime() - session.startTime.getTime();
+        }
+
+        this.logger.debug(
+          `Stopping track ${track.title}, adding ${sessionTime}ms watched time`,
+        );
 
         await this.userMediaSessionRepository.update(session.id, {
           state,

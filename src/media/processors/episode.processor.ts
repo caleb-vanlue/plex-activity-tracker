@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EpisodeRepository } from '../repositories/episode.repository';
 import { UserMediaSessionRepository } from '../repositories/user-media-session.repository';
@@ -50,6 +50,9 @@ export class EpisodeProcessor extends AbstractMediaProcessor {
       'episode',
       episode.id,
     );
+    this.logger.debug(
+      `Found session for episode ${episode.title}: ${!!session ? session.id : 'none'}, state: ${session?.state || 'N/A'}`,
+    );
 
     if (state === 'playing') {
       const activeSessions =
@@ -57,6 +60,10 @@ export class EpisodeProcessor extends AbstractMediaProcessor {
 
       for (const activeSession of activeSessions) {
         if (activeSession.mediaId !== episode.id) {
+          this.logger.debug(
+            `Stopping episode ${activeSession.episode?.title} for user ${userId} because a new episode started playing`,
+          );
+
           await this.userMediaSessionRepository.update(activeSession.id, {
             state: 'stopped',
             endTime: now,
@@ -66,10 +73,13 @@ export class EpisodeProcessor extends AbstractMediaProcessor {
           });
 
           const eventData = {
-            type: 'movie',
-            trackId: activeSession.movie.id,
+            type: 'episode',
+            episodeId: activeSession.episode.id,
             sessionId: activeSession?.id,
-            title: activeSession.movie.title,
+            title: activeSession.episode.title,
+            showTitle: activeSession.episode.showTitle,
+            season: activeSession.episode.season,
+            episode: activeSession.episode.episode,
             state: SessionStateEnum.STOPPED,
             userId,
             player: payload.Player?.title,
@@ -91,28 +101,77 @@ export class EpisodeProcessor extends AbstractMediaProcessor {
           player: payload.Player?.title,
           timeWatchedMs: 0,
         });
+        this.logger.debug(
+          `Created new session for episode ${episode.title} for user ${userId}`,
+        );
+      } else if (session.state === 'paused') {
+        this.logger.debug(
+          `Resuming paused episode ${episode.title} for user ${userId}`,
+        );
+        await this.userMediaSessionRepository.update(session.id, {
+          state: 'playing',
+          startTime: now,
+          pausedAt: null,
+          player: payload.Player?.title,
+        });
+      } else if (
+        session.state === 'playing' &&
+        payload.event === 'media.scrobble'
+      ) {
+        const sessionTime = now.getTime() - session.startTime.getTime();
+        await this.userMediaSessionRepository.update(session.id, {
+          timeWatchedMs: session.timeWatchedMs + sessionTime,
+          startTime: now,
+          state: 'playing',
+          player: payload.Player?.title,
+        });
       } else {
-        if (session.state === 'playing' && payload.event === 'media.scrobble') {
+        await this.userMediaSessionRepository.update(session.id, {
+          state: 'playing',
+          startTime: now,
+          player: payload.Player?.title,
+        });
+      }
+
+      session = await this.userMediaSessionRepository.findById(session.id);
+    } else if (state === 'paused') {
+      if (session) {
+        if (session.state === 'playing') {
           const sessionTime = now.getTime() - session.startTime.getTime();
+          this.logger.debug(
+            `Pausing episode ${episode.title}, adding ${sessionTime}ms watched time`,
+          );
+
           await this.userMediaSessionRepository.update(session.id, {
+            state,
+            pausedAt: now,
             timeWatchedMs: session.timeWatchedMs + sessionTime,
-            startTime: now,
-            state: 'playing',
-            player: payload.Player?.title,
+          });
+        } else if (session.state !== 'paused') {
+          await this.userMediaSessionRepository.update(session.id, {
+            state: 'paused',
+            pausedAt: now,
           });
         } else {
-          await this.userMediaSessionRepository.update(session.id, {
-            state: 'playing',
-            startTime: now,
-            player: payload.Player?.title,
-          });
+          this.logger.debug(
+            `Episode ${episode.title} already paused, not adding time`,
+          );
         }
 
         session = await this.userMediaSessionRepository.findById(session.id);
       }
-    } else if (state === 'paused' || state === 'stopped') {
+    } else if (state === 'stopped') {
       if (session) {
-        const sessionTime = now.getTime() - session.startTime.getTime();
+        let sessionTime = 0;
+
+        // Only calculate time if session was in playing state
+        if (session.state === 'playing') {
+          sessionTime = now.getTime() - session.startTime.getTime();
+        }
+
+        this.logger.debug(
+          `Stopping episode ${episode.title}, adding ${sessionTime}ms watched time`,
+        );
 
         await this.userMediaSessionRepository.update(session.id, {
           state,

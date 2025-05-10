@@ -52,7 +52,10 @@ export class UserMediaSession {
   startTime: Date;
 
   @Column({ nullable: true, type: 'timestamp' })
-  endTime: Date;
+  endTime: Date | null;
+
+  @Column({ nullable: true, type: 'timestamp' })
+  pausedAt: Date | null;
 
   @Column({ default: 0 })
   timeWatchedMs: number;

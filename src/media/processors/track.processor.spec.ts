@@ -13,8 +13,13 @@ describe('TrackProcessor', () => {
   let trackRepository: MockProxy<TrackRepository>;
   let userMediaSessionRepository: jest.Mocked<UserMediaSessionRepository>;
   let eventEmitter: jest.Mocked<EventEmitter2>;
+  let loggerDebugSpy: jest.SpyInstance;
+
+  const sessionMap = new Map<string, UserMediaSession>();
 
   beforeEach(async () => {
+    sessionMap.clear();
+
     const trackRepositoryMock = {
       findByRatingKey: jest.fn(),
       create: jest.fn(),
@@ -22,10 +27,28 @@ describe('TrackProcessor', () => {
 
     const userMediaSessionRepositoryMock = {
       findActive: jest.fn(),
-      findAllActiveTracks: jest.fn().mockResolvedValue([]), // Ensure it returns an empty array by default
-      create: jest.fn(),
-      update: jest.fn(),
-      findById: jest.fn(),
+      findAllActiveTracks: jest.fn().mockResolvedValue([]),
+      findAllActiveMovies: jest.fn().mockResolvedValue([]),
+      findAllActiveEpisodes: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockImplementation((data) => {
+        const session = {
+          ...data,
+          id: data.id || `session-${Math.random().toString(36).substring(7)}`,
+        };
+        sessionMap.set(session.id, session as UserMediaSession);
+        return Promise.resolve(session as UserMediaSession);
+      }),
+      update: jest.fn().mockImplementation((id, data) => {
+        const existingSession = sessionMap.get(id);
+        if (!existingSession) return Promise.resolve(null);
+
+        const updatedSession = { ...existingSession, ...data };
+        sessionMap.set(id, updatedSession as UserMediaSession);
+        return Promise.resolve(updatedSession as UserMediaSession);
+      }),
+      findById: jest.fn().mockImplementation((id) => {
+        return Promise.resolve(sessionMap.get(id) || null);
+      }),
     };
 
     const eventEmitterMock = {
@@ -45,7 +68,9 @@ describe('TrackProcessor', () => {
     }).compile();
 
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
-    jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
+    loggerDebugSpy = jest
+      .spyOn(Logger.prototype, 'debug')
+      .mockImplementation(() => {});
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
 
@@ -122,9 +147,11 @@ describe('TrackProcessor', () => {
         startTime: mockDate,
         timeWatchedMs: 0,
       };
-      userMediaSessionRepository.create.mockResolvedValue(
-        mockSession as UserMediaSession,
-      );
+
+      userMediaSessionRepository.create.mockImplementation(() => {
+        sessionMap.set('session-123', mockSession as UserMediaSession);
+        return Promise.resolve(mockSession as UserMediaSession);
+      });
 
       const result = await processor.processEvent(
         mockPayload,
@@ -201,9 +228,11 @@ describe('TrackProcessor', () => {
         startTime: mockDate,
         timeWatchedMs: 0,
       };
-      userMediaSessionRepository.create.mockResolvedValue(
-        mockSession as UserMediaSession,
-      );
+
+      userMediaSessionRepository.create.mockImplementation(() => {
+        sessionMap.set('session-123', mockSession as UserMediaSession);
+        return Promise.resolve(mockSession as UserMediaSession);
+      });
 
       const result = await processor.processEvent(
         mockPayload,
@@ -268,6 +297,7 @@ describe('TrackProcessor', () => {
       userMediaSessionRepository.findAllActiveTracks.mockResolvedValue([
         mockOtherSession as UserMediaSession,
       ]);
+      sessionMap.set('other-session-123', mockOtherSession as UserMediaSession);
 
       const mockSession = {
         id: 'session-123',
@@ -279,11 +309,13 @@ describe('TrackProcessor', () => {
         startTime: mockDate,
         timeWatchedMs: 0,
       };
-      userMediaSessionRepository.create.mockResolvedValue(
-        mockSession as UserMediaSession,
-      );
 
-      await processor.processEvent(
+      userMediaSessionRepository.create.mockImplementation(() => {
+        sessionMap.set('session-123', mockSession as UserMediaSession);
+        return Promise.resolve(mockSession as UserMediaSession);
+      });
+
+      const result = await processor.processEvent(
         mockPayload,
         'playing',
         'thumb-123',
@@ -298,6 +330,11 @@ describe('TrackProcessor', () => {
           timeWatchedMs: 60000,
         },
       );
+
+      expect(result).toEqual({
+        track: mockTrack,
+        session: mockSession,
+      });
     });
 
     it('should update an existing session when continuing playback', async () => {
@@ -326,17 +363,17 @@ describe('TrackProcessor', () => {
       userMediaSessionRepository.findAllActiveTracks.mockResolvedValue([
         existingSession as UserMediaSession,
       ]);
+      sessionMap.set('session-123', existingSession as UserMediaSession);
 
       const updatedSession = {
         ...existingSession,
         startTime: mockDate,
       };
-      userMediaSessionRepository.update.mockResolvedValue(
-        updatedSession as UserMediaSession,
-      );
-      userMediaSessionRepository.findById.mockResolvedValue(
-        updatedSession as UserMediaSession,
-      );
+
+      userMediaSessionRepository.update.mockImplementation(() => {
+        sessionMap.set('session-123', updatedSession as UserMediaSession);
+        return Promise.resolve(updatedSession as UserMediaSession);
+      });
 
       const result = await processor.processEvent(
         mockPayload,
@@ -391,18 +428,18 @@ describe('TrackProcessor', () => {
       userMediaSessionRepository.findAllActiveTracks.mockResolvedValue([
         existingSession as UserMediaSession,
       ]);
+      sessionMap.set('session-123', existingSession as UserMediaSession);
 
       const updatedSession = {
         ...existingSession,
         startTime: mockDate,
         timeWatchedMs: 180000,
       };
-      userMediaSessionRepository.update.mockResolvedValue(
-        updatedSession as UserMediaSession,
-      );
-      userMediaSessionRepository.findById.mockResolvedValue(
-        updatedSession as UserMediaSession,
-      );
+
+      userMediaSessionRepository.update.mockImplementation(() => {
+        sessionMap.set('session-123', updatedSession as UserMediaSession);
+        return Promise.resolve(updatedSession as UserMediaSession);
+      });
 
       const result = await processor.processEvent(
         scrobblePayload,
@@ -427,7 +464,7 @@ describe('TrackProcessor', () => {
       });
     });
 
-    it('should pause an existing session', async () => {
+    it('should pause an existing session and set pausedAt instead of endTime', async () => {
       const mockTrack = {
         id: 'track-123',
         ratingKey: 'track-rating-123',
@@ -450,21 +487,20 @@ describe('TrackProcessor', () => {
       userMediaSessionRepository.findActive.mockResolvedValue(
         existingSession as UserMediaSession,
       );
+      sessionMap.set('session-123', existingSession as UserMediaSession);
 
       const updatedSession = {
         ...existingSession,
         state: 'paused',
-        endTime: mockDate,
+        pausedAt: mockDate,
         timeWatchedMs: 180000,
       };
-      userMediaSessionRepository.update.mockResolvedValue(
-        updatedSession as UserMediaSession,
-      );
-      userMediaSessionRepository.findById.mockResolvedValue(
-        updatedSession as UserMediaSession,
-      );
 
-      // Execute
+      userMediaSessionRepository.update.mockImplementation(() => {
+        sessionMap.set('session-123', updatedSession as UserMediaSession);
+        return Promise.resolve(updatedSession as UserMediaSession);
+      });
+
       const result = await processor.processEvent(
         mockPayload,
         'paused',
@@ -472,12 +508,11 @@ describe('TrackProcessor', () => {
         mockUserId,
       );
 
-      // Verify
       expect(userMediaSessionRepository.update).toHaveBeenCalledWith(
         'session-123',
         {
           state: 'paused',
-          endTime: mockDate,
+          pausedAt: mockDate,
           timeWatchedMs: 180000,
         },
       );
@@ -488,8 +523,112 @@ describe('TrackProcessor', () => {
       });
     });
 
+    it('should not update timeWatchedMs when pausing an already paused session', async () => {
+      const mockTrack = {
+        id: 'track-123',
+        ratingKey: 'track-rating-123',
+        title: 'Test Track',
+        artist: 'Test Artist',
+        album: 'Test Album',
+      };
+      trackRepository.findByRatingKey.mockResolvedValue(mockTrack as Track);
+
+      const existingSession = {
+        id: 'session-123',
+        userId: mockUserId,
+        mediaType: 'track',
+        mediaId: 'track-123',
+        track: mockTrack,
+        state: 'paused',
+        startTime: new Date(mockDate.getTime() - 120000),
+        pausedAt: new Date(mockDate.getTime() - 60000),
+        timeWatchedMs: 120000,
+      };
+      userMediaSessionRepository.findActive.mockResolvedValue(
+        existingSession as UserMediaSession,
+      );
+      sessionMap.set('session-123', existingSession as UserMediaSession);
+
+      const result = await processor.processEvent(
+        mockPayload,
+        'paused',
+        'thumb-123',
+        mockUserId,
+      );
+
+      expect(userMediaSessionRepository.update).not.toHaveBeenCalled();
+
+      expect(result).toEqual({
+        track: mockTrack,
+        session: existingSession,
+      });
+    });
+
+    it('should resume playback from paused state without adding time', async () => {
+      const mockTrack = {
+        id: 'track-123',
+        ratingKey: 'track-rating-123',
+        title: 'Test Track',
+        artist: 'Test Artist',
+        album: 'Test Album',
+      };
+      trackRepository.findByRatingKey.mockResolvedValue(mockTrack as Track);
+
+      const existingSession = {
+        id: 'session-123',
+        userId: mockUserId,
+        mediaType: 'track',
+        mediaId: 'track-123',
+        track: mockTrack,
+        state: 'paused',
+        startTime: new Date(mockDate.getTime() - 60000),
+        pausedAt: new Date(mockDate.getTime() - 30000),
+        timeWatchedMs: 120000,
+      };
+      userMediaSessionRepository.findActive.mockResolvedValue(
+        existingSession as UserMediaSession,
+      );
+      userMediaSessionRepository.findAllActiveTracks.mockResolvedValue([
+        existingSession as UserMediaSession,
+      ]);
+      sessionMap.set('session-123', existingSession as UserMediaSession);
+
+      const updatedSession = {
+        ...existingSession,
+        state: 'playing',
+        startTime: mockDate,
+        pausedAt: null,
+      };
+
+      userMediaSessionRepository.update.mockImplementation(() => {
+        sessionMap.set('session-123', updatedSession as UserMediaSession);
+        return Promise.resolve(updatedSession as UserMediaSession);
+      });
+
+      const result = await processor.processEvent(
+        mockPayload,
+        'playing',
+        'thumb-123',
+        mockUserId,
+      );
+
+      expect(userMediaSessionRepository.update).toHaveBeenCalledWith(
+        'session-123',
+        {
+          state: 'playing',
+          startTime: mockDate,
+          pausedAt: null,
+          player: 'Test Player',
+        },
+      );
+
+      expect(result).toEqual({
+        track: mockTrack,
+        session: updatedSession,
+      });
+    });
+
     it('should stop an existing session', async () => {
-      // Setup mocks
       const mockTrack = {
         id: 'track-123',
         ratingKey: 'track-rating-123',
@@ -512,6 +651,7 @@ describe('TrackProcessor', () => {
       userMediaSessionRepository.findActive.mockResolvedValue(
         existingSession as UserMediaSession,
       );
+      sessionMap.set('session-123', existingSession as UserMediaSession);
 
       const updatedSession = {
         ...existingSession,
@@ -519,12 +659,11 @@ describe('TrackProcessor', () => {
         endTime: mockDate,
         timeWatchedMs: 180000,
       };
-      userMediaSessionRepository.update.mockResolvedValue(
-        updatedSession as UserMediaSession,
-      );
-      userMediaSessionRepository.findById.mockResolvedValue(
-        updatedSession as UserMediaSession,
-      );
+
+      userMediaSessionRepository.update.mockImplementation(() => {
+        sessionMap.set('session-123', updatedSession as UserMediaSession);
+        return Promise.resolve(updatedSession as UserMediaSession);
+      });
 
       const result = await processor.processEvent(
         mockPayload,
@@ -539,6 +678,66 @@ describe('TrackProcessor', () => {
           state: 'stopped',
           endTime: mockDate,
           timeWatchedMs: 180000,
+        },
+      );
+
+      expect(result).toEqual({
+        track: mockTrack,
+        session: updatedSession,
+      });
+    });
+
+    it('should stop a paused session without adding more time', async () => {
+      const mockTrack = {
+        id: 'track-123',
+        ratingKey: 'track-rating-123',
+        title: 'Test Track',
+        artist: 'Test Artist',
+        album: 'Test Album',
+      };
+      trackRepository.findByRatingKey.mockResolvedValue(mockTrack as Track);
+
+      const existingSession = {
+        id: 'session-123',
+        userId: mockUserId,
+        mediaType: 'track',
+        mediaId: 'track-123',
+        track: mockTrack,
+        state: 'paused',
+        startTime: new Date(mockDate.getTime() - 120000),
+        pausedAt: new Date(mockDate.getTime() - 60000),
+        timeWatchedMs: 120000,
+      };
+      userMediaSessionRepository.findActive.mockResolvedValue(
+        existingSession as UserMediaSession,
+      );
+      sessionMap.set('session-123', existingSession as UserMediaSession);
+
+      const updatedSession = {
+        ...existingSession,
+        state: 'stopped',
+        endTime: mockDate,
+        timeWatchedMs: 120000,
+      };
+
+      userMediaSessionRepository.update.mockImplementation(() => {
+        sessionMap.set('session-123', updatedSession as UserMediaSession);
+        return Promise.resolve(updatedSession as UserMediaSession);
+      });
+
+      const result = await processor.processEvent(
+        mockPayload,
+        'stopped',
+        'thumb-123',
+        mockUserId,
+      );
+
+      expect(userMediaSessionRepository.update).toHaveBeenCalledWith(
+        'session-123',
+        {
+          state: 'stopped',
+          endTime: mockDate,
+          timeWatchedMs: 120000,
         },
       );
 

@@ -16,7 +16,7 @@ export abstract class BaseMediaEntity {
   title: string;
 
   @Column({ nullable: true })
-  thumbnailFileId: string;
+  thumbnailFileId?: string;
 
   @Column({ type: 'jsonb', nullable: true })
   raw: any;
