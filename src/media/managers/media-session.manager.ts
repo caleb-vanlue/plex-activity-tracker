@@ -230,4 +230,21 @@ export class MediaSessionManager {
   getActiveUsers(): string[] {
     return Array.from(this.userSessions.keys());
   }
+
+  getSessionCount(): {
+    total: number;
+    tracks: number;
+    movies: number;
+    episodes: number;
+  } {
+    return {
+      total:
+        this.allActiveSessions.tracks.size +
+        this.allActiveSessions.movies.size +
+        this.allActiveSessions.episodes.size,
+      tracks: this.allActiveSessions.tracks.size,
+      movies: this.allActiveSessions.movies.size,
+      episodes: this.allActiveSessions.episodes.size,
+    };
+  }
 }

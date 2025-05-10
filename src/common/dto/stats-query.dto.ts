@@ -9,4 +9,9 @@ export class StatsQueryDto {
   @IsOptional()
   @IsString()
   user?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsEnum(['track', 'movie', 'episode', 'all'])
+  type?: string = 'all';
 }

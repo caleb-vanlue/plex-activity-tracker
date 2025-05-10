@@ -15,7 +15,15 @@ import { Response } from 'express';
 import { ThumbnailService } from '../thumbnail/thumbnail.service';
 import { MediaEventService } from '../media/media-event.service';
 import { MediaService } from '../media/media.service';
-import { ApiBody, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+  ApiOperation,
+} from '@nestjs/swagger';
+import { CurrentMediaDto } from '../common/dto/current-media.dto';
+import { StatsQueryDto } from '../common/dto/stats-query.dto';
 
 @ApiTags('webhooks')
 @Controller('webhooks')
@@ -28,6 +36,7 @@ export class PlexController {
     private thumbnailService: ThumbnailService,
   ) {}
 
+  @ApiOperation({ summary: 'Process Plex webhook event' })
   @ApiBody({
     description: 'Plex webhook payload',
     type: Object,
@@ -69,15 +78,19 @@ export class PlexController {
         }
       }
 
-      await this.mediaEventService.processPlexWebhook(payload, thumbnailId);
+      const result = await this.mediaEventService.processPlexWebhook(
+        payload,
+        thumbnailId,
+      );
 
-      return { success: true };
+      return { success: true, result };
     } catch (error) {
       this.logger.error(`Error processing webhook: ${error.message}`);
       return { success: false, error: error.message };
     }
   }
 
+  @ApiOperation({ summary: 'Get thumbnail by ID' })
   @ApiParam({
     name: 'id',
     required: true,
@@ -100,31 +113,7 @@ export class PlexController {
     }
   }
 
-  @ApiQuery({
-    name: 'type',
-    required: false,
-    type: String,
-    description: 'Type of media to fetch (track, movie, episode, all)',
-  })
-  @ApiQuery({
-    name: 'user',
-    required: false,
-    type: String,
-    description: 'Filter by specific user',
-  })
-  @Get('current')
-  async getCurrentMedia(
-    @Query('type') type: string = 'all',
-    @Query('user') user?: string,
-  ) {
-    return this.mediaService.getCurrentMedia(type, user);
-  }
-
-  @Get('users/active')
-  async getActiveUsers() {
-    return { users: await this.mediaService.getActiveUsers() };
-  }
-
+  @ApiOperation({ summary: 'Get recent media history' })
   @ApiQuery({
     name: 'type',
     required: false,
@@ -170,41 +159,6 @@ export class PlexController {
           episodes: await this.mediaService.getRecentEpisodes(limit),
         };
       }
-    }
-  }
-
-  @ApiQuery({
-    name: 'type',
-    required: false,
-    type: String,
-    description: 'Type of media to fetch (track, movie, episode, all)',
-  })
-  @ApiQuery({
-    name: 'timeframe',
-    required: false,
-    type: String,
-    description: 'Timeframe for stats (day, week, month, all)',
-  })
-  @ApiQuery({
-    name: 'user',
-    required: false,
-    type: String,
-    description: 'Filter by specific user',
-  })
-  @Get('stats')
-  async getMediaStats(
-    @Query('type') type: string = 'all',
-    @Query('timeframe') timeframe: 'day' | 'week' | 'month' | 'all' = 'all',
-    @Query('user') user?: string,
-  ) {
-    if (type === 'track') {
-      return this.mediaService.getListeningStats(timeframe, user);
-    } else if (type === 'movie') {
-      return this.mediaService.getMovieWatchingStats(timeframe, user);
-    } else if (type === 'episode') {
-      return this.mediaService.getTVWatchingStats(timeframe, user);
-    } else {
-      return this.mediaService.getStats(timeframe, user);
     }
   }
 }

@@ -1,4 +1,3 @@
-// src/media/media.service.ts
 import { Injectable } from '@nestjs/common';
 import { TrackRepository } from './repositories/track.repository';
 import { MovieRepository } from './repositories/movie.repository';
@@ -10,6 +9,7 @@ import { CombinedStatsRepository } from './repositories/combined-stats.repositor
 import { UserMediaSessionRepository } from './repositories/user-media-session.repository';
 import { MediaEventService } from './media-event.service';
 import { UserRepository } from './repositories/user.repository';
+import { MediaSessionManager } from './managers/media-session.manager';
 
 @Injectable()
 export class MediaService {
@@ -23,15 +23,17 @@ export class MediaService {
     private combinedStatsRepository: CombinedStatsRepository,
     private userMediaSessionRepository: UserMediaSessionRepository,
     private userRepository: UserRepository,
-    private mediaEventService: MediaEventService,
+    private mediaSessionManager: MediaSessionManager,
   ) {}
 
+  // Use session manager for current media
   async getCurrentMedia(type: string, user?: string): Promise<any> {
-    return this.mediaEventService.getCurrentMedia(type, user);
+    return this.mediaSessionManager.getCurrentMedia(type, user);
   }
 
+  // Use session manager for active users
   async getActiveUsers(): Promise<string[]> {
-    return this.mediaEventService.getActiveUsers();
+    return this.mediaSessionManager.getActiveUsers();
   }
 
   async getActiveUsersDetails(
@@ -479,5 +481,9 @@ export class MediaService {
         ...mediaDetails,
       };
     });
+  }
+
+  async getMediaSessionStats(): Promise<any> {
+    return this.mediaSessionManager.getSessionCount();
   }
 }
