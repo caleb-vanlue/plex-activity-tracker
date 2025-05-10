@@ -8,7 +8,7 @@ services:
       target: production
     container_name: plex-history-app
     ports:
-      - '3000:3000'
+      - '0.0.0.0:3000:3000'
     networks:
       - app-network
     environment:
