@@ -22,8 +22,6 @@ import {
   ApiTags,
   ApiOperation,
 } from '@nestjs/swagger';
-import { CurrentMediaDto } from '../common/dto/current-media.dto';
-import { StatsQueryDto } from '../common/dto/stats-query.dto';
 
 @ApiTags('webhooks')
 @Controller('webhooks')

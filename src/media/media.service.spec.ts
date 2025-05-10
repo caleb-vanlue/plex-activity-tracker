@@ -1,4 +1,3 @@
-// Mock BaseStatsRepository since it's imported from a path that might not resolve in tests
 jest.mock(
   'src/common/repositories/base-stats.repository',
   () => {
@@ -27,7 +26,6 @@ jest.mock(
   { virtual: true },
 );
 
-// Also mock BaseMediaRepository which is likely imported by other repositories
 jest.mock(
   './repositories/base-media.repository',
   () => {
@@ -69,7 +67,6 @@ import { Movie } from './entities/movie.entity';
 import { Episode } from './entities/episode.entity';
 import { UserMediaSession } from './entities/user-media-session.entity';
 
-// Mock data for testing
 const mockTrack = {
   id: '1',
   title: 'Test Track',
@@ -124,7 +121,6 @@ describe('MediaService', () => {
   let mediaSessionManager: MockProxy<MediaSessionManager>;
 
   beforeEach(async () => {
-    // Create mocks for all repositories and services
     trackRepository = mockDeep<TrackRepository>();
     movieRepository = mockDeep<MovieRepository>();
     episodeRepository = mockDeep<EpisodeRepository>();

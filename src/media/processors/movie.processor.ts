@@ -3,7 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MovieRepository } from '../repositories/movie.repository';
 import { UserMediaSessionRepository } from '../repositories/user-media-session.repository';
 import { AbstractMediaProcessor } from './abstract-media.processor';
-import { SessionStateEnum } from 'src/common/constants/media.constants';
+import { SessionStateEnum } from '../../common/constants/media.constants';
 
 @Injectable()
 export class MovieProcessor extends AbstractMediaProcessor {
@@ -75,7 +75,7 @@ export class MovieProcessor extends AbstractMediaProcessor {
           timestamp: now.toISOString(),
         };
 
-        this.eventEmitter.emit('plex.trackEvent', eventData);
+        this.eventEmitter.emit('plex.videoEvent', eventData);
       }
 
       if (!session) {

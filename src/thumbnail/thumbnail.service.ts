@@ -31,7 +31,7 @@ export class ThumbnailService {
     }
 
     try {
-      let params: any = {
+      const params: any = {
         mediaType: metadata.type,
       };
 

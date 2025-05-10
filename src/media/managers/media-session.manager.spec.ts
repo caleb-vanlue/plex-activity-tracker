@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { MediaSessionManager } from '../managers/media-session.manager';
 import { UserMediaSessionRepository } from '../repositories/user-media-session.repository';
 import { UserMediaSession } from '../entities/user-media-session.entity';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 describe('MediaSessionManager', () => {
   let manager: MediaSessionManager;
@@ -17,6 +18,7 @@ describe('MediaSessionManager', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MediaSessionManager,
+        EventEmitter2,
         {
           provide: UserMediaSessionRepository,
           useValue: userMediaSessionRepositoryMock,
@@ -30,9 +32,7 @@ describe('MediaSessionManager', () => {
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
 
     manager = module.get<MediaSessionManager>(MediaSessionManager);
-    userMediaSessionRepository = module.get(
-      UserMediaSessionRepository,
-    ) as jest.Mocked<UserMediaSessionRepository>;
+    userMediaSessionRepository = module.get(UserMediaSessionRepository);
   });
 
   afterEach(() => {

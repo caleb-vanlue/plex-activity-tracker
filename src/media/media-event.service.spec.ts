@@ -1,5 +1,4 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Logger } from '@nestjs/common';
 import { MediaSessionManager } from './managers/media-session.manager';
 import { MediaEventService } from './media-event.service';
@@ -9,10 +8,12 @@ import { MovieProcessor } from './processors/movie.processor';
 import { TrackProcessor } from './processors/track.processor';
 import { UserRepository } from './repositories/user.repository';
 import { User } from './entities/user.entity';
+import { MockProxy } from 'jest-mock-extended';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 describe('MediaEventService', () => {
   let service: MediaEventService;
-  let eventEmitter: jest.Mocked<EventEmitter2>;
+  let eventEmitter: MockProxy<EventEmitter2>;
   let userRepository: jest.Mocked<UserRepository>;
   let mediaSessionManager: jest.Mocked<MediaSessionManager>;
   let mediaProcessorFactory: jest.Mocked<MediaProcessorFactory>;
@@ -70,19 +71,13 @@ describe('MediaEventService', () => {
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
 
     service = module.get<MediaEventService>(MediaEventService);
-    eventEmitter = module.get(EventEmitter2) as jest.Mocked<EventEmitter2>;
-    userRepository = module.get(UserRepository) as jest.Mocked<UserRepository>;
-    mediaSessionManager = module.get(
-      MediaSessionManager,
-    ) as jest.Mocked<MediaSessionManager>;
-    mediaProcessorFactory = module.get(
-      MediaProcessorFactory,
-    ) as jest.Mocked<MediaProcessorFactory>;
-    trackProcessor = module.get(TrackProcessor) as jest.Mocked<TrackProcessor>;
-    movieProcessor = module.get(MovieProcessor) as jest.Mocked<MovieProcessor>;
-    episodeProcessor = module.get(
-      EpisodeProcessor,
-    ) as jest.Mocked<EpisodeProcessor>;
+    eventEmitter = module.get(EventEmitter2);
+    userRepository = module.get(UserRepository);
+    mediaSessionManager = module.get(MediaSessionManager);
+    mediaProcessorFactory = module.get(MediaProcessorFactory);
+    trackProcessor = module.get(TrackProcessor);
+    movieProcessor = module.get(MovieProcessor);
+    episodeProcessor = module.get(EpisodeProcessor);
   });
 
   afterEach(() => {

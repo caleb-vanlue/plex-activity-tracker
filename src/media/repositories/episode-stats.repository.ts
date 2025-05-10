@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserMediaSession } from '../entities/user-media-session.entity';
-import { BaseStatsRepository } from 'src/common/repositories/base-stats.repository';
+import { BaseStatsRepository } from '../../common/repositories/base-stats.repository';
 
 @Injectable()
 export class EpisodeStatsRepository extends BaseStatsRepository {

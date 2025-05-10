@@ -1,4 +1,4 @@
-import { MediaType } from 'src/common/interfaces/media.interfaces';
+import { MediaType } from '../../common/interfaces/media.interfaces';
 
 export interface PlexMetadata {
   type: MediaType;

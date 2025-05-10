@@ -3,7 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { TrackRepository } from '../repositories/track.repository';
 import { UserMediaSessionRepository } from '../repositories/user-media-session.repository';
 import { AbstractMediaProcessor } from './abstract-media.processor';
-import { SessionStateEnum } from 'src/common/constants/media.constants';
+import { SessionStateEnum } from '../../common/constants/media.constants';
 
 @Injectable()
 export class TrackProcessor extends AbstractMediaProcessor {
