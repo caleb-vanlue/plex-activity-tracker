@@ -4,19 +4,14 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { getDataSourceOptions } from 'typeorm.config';
 import { HttpModule } from '@nestjs/axios';
-
-// Entities
 import { Track } from './media/entities/track.entity';
 import { Movie } from './media/entities/movie.entity';
 import { Episode } from './media/entities/episode.entity';
 import { User } from './media/entities/user.entity';
 import { UserMediaSession } from './media/entities/user-media-session.entity';
-
-// Controllers
 import { PlexController } from './plex/plex.controller';
 import { MediaController } from './media/media.controller';
 
-// Services and Repositories
 import { ThumbnailService } from './thumbnail/thumbnail.service';
 import { TrackRepository } from './media/repositories/track.repository';
 import { MovieRepository } from './media/repositories/movie.repository';

@@ -164,7 +164,6 @@ export class EpisodeProcessor extends AbstractMediaProcessor {
       if (session) {
         let sessionTime = 0;
 
-        // Only calculate time if session was in playing state
         if (session.state === 'playing') {
           sessionTime = now.getTime() - session.startTime.getTime();
         }
